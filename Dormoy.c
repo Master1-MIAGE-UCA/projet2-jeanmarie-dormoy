@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/time.h>
 
 #define LINE_SIZE 500
 
@@ -15,6 +16,23 @@ typedef struct Matrix {
 #define GET(mat, i, j) mat->data[j * mat->width + i]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 
+Matrix *new_Matrix(int width, int height) {
+	Matrix *m = malloc(sizeof(Matrix));
+	if (!m) {
+		fprintf(stderr, "new_Matrix: Matrix malloc error\n");
+		exit(4);
+	}
+	m->width = width;
+	m->height = height;
+	m->size = width * height;
+	m->data = calloc(m->size, sizeof(unsigned int));
+
+	if (!m->data) {
+		fprintf(stderr, "build_matrix: res->data malloc error\n");
+		exit(5);
+	}
+	return m;
+}
 
 int first_pass(char *s) {
 	char *token;
@@ -103,7 +121,22 @@ Matrix *build_matrix(
 	return res;
 }
 
+void sequentialMultiply(Matrix *a, Matrix *b, Matrix *res) {
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
+	for(int i=0; i < a->height; i++){
+		for(int j=0; j < a->width; j++){
+			for(int k=0; k< a->width; k++){
+				GET(res, i, j) += 
+					GET(a, i, k) * GET(b, k, j);
+			}
+		}
+	}
+	gettimeofday(&t1, 0);
+	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
 
+	printf("sequentialMultiply time:  %f\n", elapsed);
+}
 int main(int argc, char *argv[]) {
 
     int rank, numprocs;// line_size = 0;
@@ -111,7 +144,7 @@ int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	Matrix *mat;
+	Matrix *mat, *res;
 	//MPI_Status status;
 	if (argc != 2) {
 		fprintf(stderr,
@@ -139,6 +172,10 @@ int main(int argc, char *argv[]) {
 			print_matrix(mat);
 			puts("");
 			pretty_matrix(mat);
+			puts("-------------------");
+			res = new_Matrix(4, 4);
+			sequentialMultiply(mat, mat, res);
+			pretty_matrix(res);
 			break;
 		case 1:
 			puts("process 1");
