@@ -1,10 +1,10 @@
 #include <mpi.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
-
 #define LINE_SIZE 500
 
 typedef struct Matrix {
@@ -13,7 +13,7 @@ typedef struct Matrix {
     int height;
     int size;
 } Matrix;
-#define GET(mat, i, j) mat->data[j * mat->width + i]
+#define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 
 Matrix *new_Matrix(int width, int height) {
@@ -32,6 +32,57 @@ Matrix *new_Matrix(int width, int height) {
 		exit(5);
 	}
 	return m;
+}
+
+void randomlyFillMatrix(Matrix *m){
+	//Random seed
+	srandom(time(0)+clock()+random());
+	#pragma omp parallel for
+	for(int i=0; i < m->size; i++){
+			m->data[i] = rand() % 200 + 1;
+	}
+}
+
+Matrix *matrixcpy(Matrix *src) {
+	if (!src || !src->data)
+		return NULL;
+	Matrix *dest = new_Matrix(
+			src->width, src->height);
+	#pragma omp parallel for
+	for(int i=0; i < src->size; i++){
+			dest->data[i] = src->data[i];
+	}
+	return dest;
+}
+
+Matrix *sequentialMultiply(Matrix *a, Matrix *b, Matrix *res) {
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
+	for(int i=0; i < a->height; i++){
+		for(int j=0; j < a->width; j++){
+			SET(res, i, j, 0);
+			for(int k=0; k< a->width; k++){
+				GET(res, i, j) += 
+					GET(a, i, k) * GET(b, k, j);
+				//printf("res[ %d ]\n", i * res->width + j);
+				//printf(
+				//		"res(%d , %d) +=  %u * %u\n", 
+				//		i, j,
+				//		GET(a, i, k), GET(b, k, j));
+			}
+		}
+	}
+	gettimeofday(&t1, 0);
+	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+
+	printf("sequentialMultiply time:  %f\n", elapsed);
+	return res;
+}
+
+Matrix *sequentialMultiplyBySelf(Matrix *m) {
+	Matrix *a, *b;
+	a = matrixcpy(m); b= matrixcpy(m);
+	return sequentialMultiply(a, b, m);
 }
 
 int first_pass(char *s) {
@@ -56,9 +107,9 @@ void pretty_matrix(Matrix *m) {
 	int len = m->width * m->height;
 	for (int i = 0; i < len; ++i) {
 		if (i % m->width == 0)
-			printf("\n%5d ", m->data[i]);
+			printf("\n%5u ", m->data[i]);
 		else
-			printf("%5d ", m->data[i]);
+			printf("%5u ", m->data[i]);
 	}
 	puts("");
 }
@@ -121,22 +172,6 @@ Matrix *build_matrix(
 	return res;
 }
 
-void sequentialMultiply(Matrix *a, Matrix *b, Matrix *res) {
-	struct timeval t0, t1;
-	gettimeofday(&t0, 0);
-	for(int i=0; i < a->height; i++){
-		for(int j=0; j < a->width; j++){
-			for(int k=0; k< a->width; k++){
-				GET(res, i, j) += 
-					GET(a, i, k) * GET(b, k, j);
-			}
-		}
-	}
-	gettimeofday(&t1, 0);
-	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
-
-	printf("sequentialMultiply time:  %f\n", elapsed);
-}
 int main(int argc, char *argv[]) {
 
     int rank, numprocs;// line_size = 0;
@@ -170,11 +205,15 @@ int main(int argc, char *argv[]) {
 				exit(6);
 			}
 			print_matrix(mat);
-			puts("");
 			pretty_matrix(mat);
 			puts("-------------------");
-			res = new_Matrix(4, 4);
-			sequentialMultiply(mat, mat, res);
+			res = new_Matrix(10, 10);
+			randomlyFillMatrix(res);
+			puts("   res:");
+			pretty_matrix(res);
+			
+			puts("");
+			sequentialMultiplyBySelf(res);
 			pretty_matrix(res);
 			break;
 		case 1:
