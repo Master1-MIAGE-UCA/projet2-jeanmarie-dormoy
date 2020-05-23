@@ -102,14 +102,14 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	puts("convB:");
 	print_matrix(convB);*/
 	
-	/*#pragma omp parallel for private(i, j, k, iOff, jOff) \
-	//	shared(res, a, b, sum)*/
+	#pragma omp parallel for private(i, j, k, iOff, jOff, sum) \
+		shared(res)
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
 		for(j=0; j < b->width; j++){
 			jOff = j * b->height;
 			sum = 0;
-			//#pragma omp parallel for reduction(+: sum)
+			#pragma omp parallel for reduction(+: sum)
 			for(k=0; k< a->width; k++){
 				sum += a->data[iOff + k] * convB->data[jOff + k];
 			}
@@ -166,13 +166,13 @@ int main(int argc, char *argv[]) {
 			//printf("mat written from %s:\n", argv[1]);
 			//print_matrix(mat);
 
-			a = new_Matrix(800, 414);
+			a = new_Matrix(2720, 1714);
 			randomlyFillMatrix(a);
 			a_save = matrixcpy(a);
 			puts("a:");
 			print_matrix(a);			
 			
-			b = new_Matrix(414, 712);
+			b = new_Matrix(1714, 2804);
 			randomlyFillMatrix(b);
 
 			puts("sequential a * b:");
