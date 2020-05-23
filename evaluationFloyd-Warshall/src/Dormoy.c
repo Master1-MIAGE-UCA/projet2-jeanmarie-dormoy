@@ -18,96 +18,23 @@ typedef struct Matrix {
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 
-/* .---------------. 
- * |  CONSTRUCTOR  |
- * .---------------.
- */
-Matrix *new_Matrix(int height, int width) {
-	Matrix *m = malloc(sizeof(Matrix));
-	if (!m) {
-		fprintf(stderr, "new_Matrix: Matrix malloc error\n");
-		exit(4);
-	}
-	m->width = width;
-	m->height = height;
-	m->size = width * height;
-	m->data = calloc(m->size, sizeof(unsigned int));
+/* New Matrix */
+Matrix *new_Matrix(int height, int width);
+/* Free Matrix */
+void Destroy_Matrix(Matrix *m);
+void Destroy_All_Matrices(int num, ...);
+/* Display */
+void print_raw_matrix(Matrix *m);
+void print_matrix(Matrix *m);
 
-	if (!m->data) {
-		fprintf(stderr, "build_matrix: res->data malloc error\n");
-		exit(5);
-	}
-	return m;
-}
-void Destroy_Matrix(Matrix *m) {
-	if (m && m->data) {
-		free(m->data);
-		free(m);
-	}
-}
-void Destroy_All_Matrices(int num, ...) {
-	va_list valist; 
-	Matrix *temp; 
-    va_start(valist, num); 
-    for (int i = 0; i < num; i++) { 
-		temp = va_arg(valist, Matrix*);
-		Destroy_Matrix(temp);
-	}
-    va_end(valist); 
-}
-/* .-----------. 
- * |  DISPLAY  |
- * .-----------.
- */
-void print_raw_matrix(Matrix *m) {
-	int len = m->width * m->height;
-	for (int i = 0; i < len; ++i)
-		printf("%d ", m->data[i]);
-	puts("");
-}
-void print_matrix(Matrix *m) {
-	int len = m->width * m->height;
-	for (int i = 0; i < len; ++i) {
-		if (i % m->width == 0)
-			if (i == 0)
-				printf("%5u ", m->data[i]);
-			else
-				printf("\n%5u ", m->data[i]);
-		else
-			printf("%5u ", m->data[i]);
-	}
-	puts("\n");
-}
-void randomlyFillMatrix(Matrix *m){
-	//Random seed
-	srandom(time(0)+clock()+random());
-	#pragma omp parallel for
-	for(int i=0; i < m->size; i++){
-			m->data[i] = rand() % 200 + 1;
-	}
-}
+/* Matrix filling & copying */
+void randomlyFillMatrix(Matrix *m);
+Matrix *matrixcpy(Matrix *src);
+Matrix *matrixcpy_reverseIndex(Matrix *src);
 
-Matrix *matrixcpy(Matrix *src) {
-	if (!src || !src->data)
-		return NULL;
-	Matrix *dest = new_Matrix(src->height, src->width);
-	#pragma omp parallel for
-	for(int i=0; i < src->size; i++)
-		dest->data[i] = src->data[i];
-	return dest;
-}
+/* Tests */
+int Test_Equals(Matrix *a, Matrix *b);
 
-Matrix *matrixcpy_reverseIndex(Matrix *src) {
-	if (!src || !src->data)
-		return NULL;
-	Matrix *res = new_Matrix(src->height, src->width);
-	#pragma omp parallel for
-	for(int i=0; i < src->height; i++)
-		for(int j=0; j < src->width; j++)
-			res->data[j*src->height + i] = 
-				GET(src, i, j);
-	return res;
-}
 
 Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 	if (a->width != b->height) {
@@ -266,7 +193,7 @@ Matrix *build_matrix(
 	return res;
 }
 
-int Test_Equals(Matrix *a, Matrix *b);
+
 int main(int argc, char *argv[]) {
 
     int rank, numprocs, equals;
@@ -333,11 +260,116 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+/* .---------------. 
+ * |  CONSTRUCTOR  |
+ * .---------------.
+ */
+Matrix *new_Matrix(int height, int width) {
+	Matrix *m = malloc(sizeof(Matrix));
+	if (!m) {
+		fprintf(stderr, "new_Matrix: Matrix malloc error\n");
+		exit(4);
+	}
+	m->width = width;
+	m->height = height;
+	m->size = width * height;
+	m->data = calloc(m->size, sizeof(unsigned int));
+
+	if (!m->data) {
+		fprintf(stderr, "build_matrix: res->data malloc error\n");
+		exit(5);
+	}
+	return m;
+}
+/* .---------------. 
+ * |   DESTRUCTOR  |
+ * .---------------.
+ */
+
+void Destroy_Matrix(Matrix *m) {
+	if (m && m->data) {
+		free(m->data);
+		free(m);
+	}
+}
+void Destroy_All_Matrices(int num, ...) {
+	va_list valist; 
+	Matrix *temp; 
+    va_start(valist, num); 
+    for (int i = 0; i < num; i++) { 
+		temp = va_arg(valist, Matrix*);
+		Destroy_Matrix(temp);
+	}
+    va_end(valist); 
+}
+/* .-----------. 
+ * |  DISPLAY  |
+ * .-----------.
+ */
+void print_raw_matrix(Matrix *m) {
+	int len = m->width * m->height;
+	for (int i = 0; i < len; ++i)
+		printf("%d ", m->data[i]);
+	puts("");
+}
+void print_matrix(Matrix *m) {
+	int len = m->width * m->height;
+	for (int i = 0; i < len; ++i) {
+		if (i % m->width == 0)
+			if (i == 0)
+				printf("%5u ", m->data[i]);
+			else
+				printf("\n%5u ", m->data[i]);
+		else
+			printf("%5u ", m->data[i]);
+	}
+	puts("\n");
+}
+/* .----------------------------. 
+ * |  MATRIX FILLING & COPYING  |
+ * .----------------------------.
+ */
+void randomlyFillMatrix(Matrix *m){
+	//Random seed
+	srandom(time(0)+clock()+random());
+	#pragma omp parallel for
+	for(int i=0; i < m->size; i++){
+			m->data[i] = rand() % 200 + 1;
+	}
+}
+
+Matrix *matrixcpy(Matrix *src) {
+	if (!src || !src->data)
+		return NULL;
+	Matrix *dest = new_Matrix(src->height, src->width);
+	#pragma omp parallel for
+	for(int i=0; i < src->size; i++)
+		dest->data[i] = src->data[i];
+	return dest;
+}
+
+Matrix *matrixcpy_reverseIndex(Matrix *src) {
+	if (!src || !src->data)
+		return NULL;
+	Matrix *res = new_Matrix(src->height, src->width);
+	#pragma omp parallel for
+	for(int i=0; i < src->height; i++)
+		for(int j=0; j < src->width; j++)
+			res->data[j*src->height + i] = 
+				GET(src, i, j);
+	return res;
+}
+/* .-----------. 
+ * |   TESTS   |
+ * .-----------.
+ */
 int Test_Equals(Matrix *a, Matrix *b) {
 	if (a->height != b->height 
 			|| a->width != b->width
 			|| a->size != b->size)
 		return 0;
+	//TODO: parallelize this at the end
+	//#pragma omp parallel for
 	for (int i = 0; i < a->size; i++)
 		if (a->data[i] != b->data[i]) {
 			printf("i=%d\n", i);
