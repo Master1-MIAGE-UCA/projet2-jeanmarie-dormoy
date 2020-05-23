@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <mpi.h>
 #include <time.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@ typedef struct Matrix {
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 
+//TODO reverse paramters order and all calls
 Matrix *new_Matrix(int width, int height) {
 	Matrix *m = malloc(sizeof(Matrix));
 	if (!m) {
@@ -55,20 +57,30 @@ Matrix *matrixcpy(Matrix *src) {
 	return dest;
 }
 
+//TODO write function
+Matrix *matrixcpy_reverseIndex(Matrix *src) {
+	if (!src || !src->data)
+		return NULL;
+	Matrix *dest = new_Matrix(
+			src->width, src->height);
+	#pragma omp parallel for
+	for(int i=0; i < src->height; i++){
+		for(int j=0; j < src->width; j++) {
+
+			dest->data[i] = src->data[i];
+	}
+	return dest;
+}
+
 Matrix *sequentialMultiply(Matrix *a, Matrix *b, Matrix *res) {
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	for(int i=0; i < a->height; i++){
-		for(int j=0; j < a->width; j++){
+		for(int j=0; j < b->width; j++){
 			SET(res, i, j, 0);
 			for(int k=0; k< a->width; k++){
 				GET(res, i, j) += 
 					GET(a, i, k) * GET(b, k, j);
-				//printf("res[ %d ]\n", i * res->width + j);
-				//printf(
-				//		"res(%d , %d) +=  %u * %u\n", 
-				//		i, j,
-				//		GET(a, i, k), GET(b, k, j));
 			}
 		}
 	}
@@ -81,8 +93,51 @@ Matrix *sequentialMultiply(Matrix *a, Matrix *b, Matrix *res) {
 
 Matrix *sequentialMultiplyBySelf(Matrix *m) {
 	Matrix *a, *b;
-	a = matrixcpy(m); b= matrixcpy(m);
+	a = matrixcpy(m); b = matrixcpy(m);
 	return sequentialMultiply(a, b, m);
+}
+
+
+
+Matrix *parallelMultiply(Matrix *a, Matrix *b) {
+	if (a->width != b->height) {
+		fprintf(
+				stderr, 
+				"matrix product: a->width=%d b->height=%d\n",
+				a->width, b->width);
+		exit(7);
+	}
+	Matrix *res = new_Matrix(a->height, b->width);
+	int i, j, k, iOff, jOff, sum;
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
+
+	#pragma omp parallel for private(i, j, k, iOff, jOff) \
+		shared(res, a, b, sum)
+	for(i=0; i < a->height; i++){
+		iOff = i * a->width;
+		for(j=0; j < b->width; j++){
+			jOff = j * b->height;
+			sum = 0;
+			#pragma omp parallel for reduction(+: sum)
+			for(k=0; k< a->width; k++){
+				sum += a->data[iOff + k] * b->data[jOff + k];
+			}
+			SET(res, i, j, sum);
+		}
+	}
+	gettimeofday(&t1, 0);
+	double elapsed =
+		(t1.tv_sec-t0.tv_sec) * 1.0f + 
+		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	printf("parallelMultiply time:  %f\n", elapsed);
+	return res;
+}
+
+Matrix *parallelMultiplyBySelf(Matrix *m) {
+	Matrix *a, *b;
+	a = matrixcpy(m); b= matrixcpy(m);
+	return parallelMultiply(a, b);
 }
 
 int first_pass(char *s) {
@@ -124,6 +179,7 @@ void fill_matrix_with_line(
 		token = strtok(NULL, " ");
 	}
 }
+
 Matrix *build_matrix(
 		FILE *fp) {
 	Matrix *res = malloc(sizeof(Matrix));
@@ -163,10 +219,8 @@ Matrix *build_matrix(
 	}
 	while (read != -1) {
 		fill_matrix_with_line(res->data, &index, line);
-		//printf("Retrieved line of length %zu:\n", read);
 		read = getline(&line, &len, fp);
 	}
-	
 	if (line) free(line);
 	if (save) free(save);
 	return res;
@@ -179,7 +233,7 @@ int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	Matrix *mat, *res;
+	Matrix *mat, *res, *copy;
 	//MPI_Status status;
 	if (argc != 2) {
 		fprintf(stderr,
@@ -204,17 +258,18 @@ int main(int argc, char *argv[]) {
 				fprintf(stderr, "var mat: build_matrix ret NULL\n");
 				exit(6);
 			}
-			print_matrix(mat);
 			pretty_matrix(mat);
 			puts("-------------------");
-			res = new_Matrix(10, 10);
+			res = new_Matrix(4, 4);
 			randomlyFillMatrix(res);
+			copy = matrixcpy(res);
 			puts("   res:");
-			pretty_matrix(res);
-			
+			pretty_matrix(res);			
 			puts("");
 			sequentialMultiplyBySelf(res);
 			pretty_matrix(res);
+			parallelMultiplyBySelf(copy);
+			pretty_matrix(copy);
 			break;
 		case 1:
 			puts("process 1");
