@@ -18,14 +18,18 @@ typedef struct Matrix {
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 
-/* New Matrix */
 Matrix *new_Matrix(int height, int width);
-/* Free Matrix */
 void Destroy_Matrix(Matrix *m);
 void Destroy_All_Matrices(int num, ...);
-/* Display */
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
+
+/* File Reading */
+int first_pass(char *s);
+void fill_matrix_with_line(
+		unsigned int *array,
+		int *index, char *line);
+Matrix *build_matrix(FILE *fp);
 
 /* Matrix filling & copying */
 void randomlyFillMatrix(Matrix *m);
@@ -36,6 +40,10 @@ Matrix *matrixcpy_reverseIndex(Matrix *src);
 int Test_Equals(Matrix *a, Matrix *b);
 
 
+/* .--------------------------. 
+ * |    SEQUENTIAL PRODUCT    |
+ * .--------------------------.
+ */
 Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 	if (a->width != b->height) {
 		fprintf(
@@ -62,7 +70,6 @@ Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 	printf("sequentialMultiply time:  %f\n", elapsed);
 	return res;
 }
-
 Matrix *sequentialMultiplyBySelf(Matrix *m) {
 	Matrix *a, *b, *res;
 	a = matrixcpy(m); b = matrixcpy(m);
@@ -71,8 +78,10 @@ Matrix *sequentialMultiplyBySelf(Matrix *m) {
 	return res;
 }
 
-
-
+/* .------------------------. 
+ * |    PARALLEL PRODUCT    |
+ * .------------------------.
+ */
 Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	if (a->width != b->height) {
 		fprintf(
@@ -123,76 +132,6 @@ Matrix *parallelMultiplyBySelf(Matrix *m) {
 	Destroy_All_Matrices(2, a, b);
 	return res;
 }
-
-int first_pass(char *s) {
-	char *token;
-	int len = 0;
-	token = strtok(s, " ");
-	while (token) {
-		len +=1;
-		token = strtok(NULL, " ");
-	}
-	return len;
-}
-
-
-void fill_matrix_with_line(
-		unsigned int *array, int *index, char *line) {
-	char *token;
-	token = strtok(line, " ");
-	while (token) {
-		array[*index] = atoi(token);
-		*index += 1;
-		token = strtok(NULL, " ");
-	}
-}
-
-Matrix *build_matrix(
-		FILE *fp) {
-	Matrix *res = malloc(sizeof(Matrix));
-	int n = 0, index = 0;
-	char *line = NULL, *save;
-    size_t len = 0;
-   	ssize_t read;
-	if (!res) {
-		fprintf(stderr, "build_matrix: res malloc error\n");
-		exit(3);
-	}
-	line = calloc(LINE_SIZE, sizeof(char));
-	if (!line) {
-		fprintf(stderr, "build_matrix: line calloc error\n");
-		exit(4);
-	}
-	save = calloc(LINE_SIZE, sizeof(char));
-	if (!save) {
-		fprintf(stderr, "build_matrix: save calloc error\n");
-		exit(5);
-	}
-	if ((read = getline(&line, &len, fp)) != -1) {
-		strcpy(save, line);
-		n = first_pass(save);
-	}
-	if (!n) {
-		if (res) free(res);
-		if (line) free(line);
-		if (save) free(save);
-		return NULL;
-	}
-	res->height = res->width = n;
-	res->data = calloc(n * n, sizeof(unsigned int));
-	if (!res->data) {
-		fprintf(stderr, "build_matrix: res->data malloc error\n");
-		exit(5);
-	}
-	while (read != -1) {
-		fill_matrix_with_line(res->data, &index, line);
-		read = getline(&line, &len, fp);
-	}
-	if (line) free(line);
-	if (save) free(save);
-	return res;
-}
-
 
 int main(int argc, char *argv[]) {
 
@@ -281,11 +220,11 @@ Matrix *new_Matrix(int height, int width) {
 	}
 	return m;
 }
+
 /* .---------------. 
  * |   DESTRUCTOR  |
  * .---------------.
  */
-
 void Destroy_Matrix(Matrix *m) {
 	if (m && m->data) {
 		free(m->data);
@@ -302,6 +241,7 @@ void Destroy_All_Matrices(int num, ...) {
 	}
     va_end(valist); 
 }
+
 /* .-----------. 
  * |  DISPLAY  |
  * .-----------.
@@ -325,6 +265,7 @@ void print_matrix(Matrix *m) {
 	}
 	puts("\n");
 }
+
 /* .----------------------------. 
  * |  MATRIX FILLING & COPYING  |
  * .----------------------------.
@@ -337,7 +278,6 @@ void randomlyFillMatrix(Matrix *m){
 			m->data[i] = rand() % 200 + 1;
 	}
 }
-
 Matrix *matrixcpy(Matrix *src) {
 	if (!src || !src->data)
 		return NULL;
@@ -347,7 +287,6 @@ Matrix *matrixcpy(Matrix *src) {
 		dest->data[i] = src->data[i];
 	return dest;
 }
-
 Matrix *matrixcpy_reverseIndex(Matrix *src) {
 	if (!src || !src->data)
 		return NULL;
@@ -359,6 +298,81 @@ Matrix *matrixcpy_reverseIndex(Matrix *src) {
 				GET(src, i, j);
 	return res;
 }
+
+/* .--------------------. 
+ * |    FILE READING    |
+ * .--------------------.
+ */
+int first_pass(char *s) {
+	char *token;
+	int len = 0;
+	token = strtok(s, " ");
+	while (token) {
+		len +=1;
+		token = strtok(NULL, " ");
+	}
+	return len;
+}
+void fill_matrix_with_line(
+		unsigned int *array, int *index, char *line) {
+	char *token;
+	token = strtok(line, " ");
+	while (token) {
+		array[*index] = atoi(token);
+		*index += 1;
+		token = strtok(NULL, " ");
+	}
+}
+Matrix *build_matrix(FILE *fp) {
+	Matrix *res = malloc(sizeof(Matrix));
+	int n = 0, index = 0;
+	char *line = NULL, *save;
+    size_t len = 0;
+   	ssize_t read;
+	if (!res) {
+		fprintf(stderr, "build_matrix: res malloc error\n");
+		exit(3);
+	}
+	line = calloc(LINE_SIZE, sizeof(char));
+	if (!line) {
+		fprintf(stderr, "build_matrix: line calloc error\n");
+		exit(4);
+	}
+	save = calloc(LINE_SIZE, sizeof(char));
+	if (!save) {
+		fprintf(stderr, "build_matrix: save calloc error\n");
+		exit(5);
+	}
+	if ((read = getline(&line, &len, fp)) != -1) {
+		strcpy(save, line);
+		n = first_pass(save);
+	}
+	if (!n) {
+		if (res) free(res);
+		if (line) free(line);
+		if (save) free(save);
+		return NULL;
+	}
+	res->height = res->width = n;
+	res->data = calloc(n * n, sizeof(unsigned int));
+	if (!res->data) {
+		fprintf(stderr, "build_matrix: res->data malloc error\n");
+		exit(5);
+	}
+	while (read != -1) {
+		fill_matrix_with_line(res->data, &index, line);
+		read = getline(&line, &len, fp);
+	}
+	if (line) free(line);
+	if (save) free(save);
+	return res;
+}
+
+
+
+
+
+
 /* .-----------. 
  * |   TESTS   |
  * .-----------.
