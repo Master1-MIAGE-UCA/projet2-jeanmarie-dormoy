@@ -1,0 +1,34 @@
+{
+  "configurations": {
+    "C program: Attach": {
+      "adapter": "vscode-cpptools",
+      "configuration": {
+        "name": "vscode-cpptools: Attach",
+        "type": "cppdbg",
+        "request": "attach",
+        "program": "${workspaceRoot}/Dormoy"
+      },
+	  "linux": {
+  		  "MIMode": "gdb",
+  		  "miDebuggerPath": "/usr/bin/gdb"
+  	  }
+    },
+    "C program: Launch": {
+      "adapter": "vscode-cpptools",
+      "configuration": {
+        "name": "vscode-cpptools: Launch",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "/usr/bin/mpirun",
+        "args": ["-np", "4", "Dormoy",  "input1.txt"],
+        "cwd": "${workspaceRoot}",
+        "environment": [],
+        "externalConsole": false,
+		"linux": {
+			"MIMode": "gdb",
+			"miDebuggerPath": "/usr/bin/gdb"
+		}
+      }
+    }
+  }
+}
