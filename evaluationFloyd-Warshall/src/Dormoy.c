@@ -21,7 +21,7 @@ typedef struct Matrix {
 Matrix *new_Matrix(int height, int width);
 void Destroy_Matrix(Matrix *m);
 void Destroy_All_Matrices(int num, ...);
-void Destroy_Matrix_Array(Matrix *arr, int len);
+void Destroy_Matrix_Array(Matrix **arr, int len);
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
 void print_raw_array(unsigned int *arr, int len);
@@ -43,20 +43,20 @@ int Test_Equals(Matrix *a, Matrix *b);
 
 /* Scatter */
 void fill_submatrix(Matrix *m, Matrix *A, int *offset);
-void print_matrix_list(Matrix *m, int len);
-void Finalizer(int rank, int numprocs, Matrix *sub_matrices_a,
-		int len_submat_a);
+void print_matrix_list(Matrix **m, int len);
+void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
+		int len_submat_a, Matrix *a);
 
-Matrix* Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){ 
+Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){ 
 	int lines_A, remain, divider, offset = 0;
 	lines_A	= A->height;
 	divider = lines_A / numprocs;
 	remain = lines_A % numprocs;
-	Matrix *matrix_list = NULL;
+	Matrix **matrix_list = NULL;
 	printf("remain=%d\n", remain);
 	if (remain == 0) {
 		//we have divider sub matrices
-		matrix_list = calloc(numprocs, sizeof(Matrix));
+		matrix_list = calloc(numprocs, sizeof(Matrix*));
 		if (!matrix_list) {
 			fprintf(stderr,
 					"Explode_A_Into_Lines: matrix_list calloc error");
@@ -64,8 +64,8 @@ Matrix* Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){
 		}
 		*len = numprocs;
 		for (int i = 0; i < numprocs; i++) {
-			matrix_list[i] = *new_Matrix(divider, A->width);
-			fill_submatrix(matrix_list + i, A, &offset);
+			matrix_list[i] = new_Matrix(divider, A->width);
+			fill_submatrix(matrix_list[i], A, &offset);
 		}
 	} else {
 
@@ -75,10 +75,10 @@ Matrix* Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){
 
 void Scatter_A_Lines(
 		FILE *fp, int rank, int numprocs, MPI_Status status,
-		Matrix **sub_matrices_a, int *len_submat_a) {
+		Matrix ***sub_matrices_a, int *len_submat_a, Matrix **a) {
 	unsigned int *buffer = NULL, *_exit;
 	int size_msg;
-	Matrix	*mat, *a;
+	Matrix	*mat;
 	_exit = calloc(1, sizeof(unsigned int));
 	switch(rank) {
 		case 0:	
@@ -89,22 +89,23 @@ void Scatter_A_Lines(
 				fprintf(stderr, "var mat: build_matrix ret NULL\n");
 				exit(6);
 			}
-			a = new_Matrix(8, 4);
-			randomlyFillMatrix(a);
+			*a = new_Matrix(8, 4);
+			randomlyFillMatrix(*a);
 			puts("a:");
-			print_matrix(a);
+			print_matrix(*a);
 			*sub_matrices_a = Explode_A_Into_Lines(
-					a, numprocs, len_submat_a);
+					*a, numprocs, len_submat_a);
 			printf("len=%d\n", *len_submat_a);
 			print_matrix_list(*sub_matrices_a, *len_submat_a);
-
+			
 			for (int i = 0; i < numprocs - 1; i++)
 				MPI_Send(
-						(*sub_matrices_a)[i].data,
-						(*sub_matrices_a)[i].size,
+						(*sub_matrices_a)[i]->data,
+						(*sub_matrices_a)[i]->size,
 						MPI_INT, (rank + 1) % numprocs,
 						0, MPI_COMM_WORLD);
-			Finalizer(rank, numprocs, *sub_matrices_a, *len_submat_a);
+			
+			//MPI_Barrier(MPI_COMM_WORLD);
 			break;
 		default:
 			printf("process %d\n", rank);
@@ -125,33 +126,36 @@ void Scatter_A_Lines(
 					MPI_Send(buffer, size_msg, MPI_INT,
 							(rank + 1) % numprocs, 0,
 							MPI_COMM_WORLD);
-				else {
-					_exit[0] = 255;
-					MPI_Send(_exit, 1, MPI_INT, 0, 0, 
-							MPI_COMM_WORLD);
-				}
-				if (buffer) free(buffer);
+				//else {
+				_exit[0] = 255;
+				//MPI_Send(_exit, 1, MPI_INT, 0, 0, 
+				//		MPI_COMM_WORLD);
+				//MPI_Barrier(MPI_COMM_WORLD);
+				//}
+				//if (buffer) free(buffer);
 				
 			}
 			break;
 	}
 }
 
-void Finalizer(int rank, int numprocs, Matrix *sub_matrices_a,
-		int len_submat_a){
-	unsigned int* buffer = calloc(1, sizeof(unsigned int));
+void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
+		int len_submat_a, Matrix *a){
+/*	unsigned int* buffer1, *buffer2,* buffer3;
+	buffer1 = calloc(1, sizeof(unsigned int));
+	buffer2 = calloc(1, sizeof(unsigned int));
+	buffer3 = calloc(1, sizeof(unsigned int));*/
 	switch(rank) {
 		case 0:
 			//print_matrix_list(sub_matrices_a, len_submat_a);
-			MPI_Recv(buffer, 1, MPI_INT, numprocs - 1, 0,
-					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			if (*buffer == 255) {
+//			if (*buffer == 255) {
 				//Destroy_All_Matrices(1, a);
-				printf("===>buffer=%d\n", *buffer);
+//				printf("===>buffer=%d\n", *buffer);
 				printf("=>submat_a=%p\n", (void*) sub_matrices_a);
 				printf("=>len_submat_a=%d\n", len_submat_a);
+				Destroy_All_Matrices(1, a);
 				Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-			}	
+//			}	
 			break;
 		default:
 			break;
@@ -159,11 +163,11 @@ void Finalizer(int rank, int numprocs, Matrix *sub_matrices_a,
 }
 int main(int argc, char *argv[]) {
     int rank, numprocs, len_submat_a;
+	Matrix **sub_matrices_a, *a;
 	FILE *fp;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	Matrix *sub_matrices_a;
 	MPI_Status status;
 	if (argc != 2) {
 		fprintf(stderr,
@@ -178,15 +182,20 @@ int main(int argc, char *argv[]) {
         exit(2);
 	}
 	//initialization
-	switch(rank) {
-		case 0:
-		break;
-	}
 	Scatter_A_Lines(fp, rank, numprocs, status,
-			&sub_matrices_a, &len_submat_a);
+			&sub_matrices_a, &len_submat_a, &a);
 	//finalizaion
 	puts("hello here");
 
+	//MPI_Barrier(MPI_COMM_WORLD);
+	Finalizer(rank, numprocs, sub_matrices_a, len_submat_a,
+			a);
+	switch(rank) {
+		case 0:
+			//Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
+
+		break;
+	}
 	MPI_Finalize();
 	return 0;
 }
@@ -218,14 +227,25 @@ Matrix *new_Matrix(int height, int width) {
  * .---------------.
  */
 void Destroy_Matrix(Matrix *m) {
-	if (m && m->data) {
-		free(m->data);
+	printf("======>debuuug: %p\n", (void*) m);
+	printf("======>debuuug: %p\n", (void*) m->data);
+	print_matrix(m);
+	if (m) {
+		puts("1");
+		if (m->data)
+			free(m->data);
+		puts("2");
 		free(m);
+		puts("3");
 	}
 }
-void Destroy_Matrix_Array(Matrix *arr, int len) {
-	for (int i = 0; i < len; i++)
-		Destroy_Matrix(arr + i);
+void Destroy_Matrix_Array(Matrix **arr, int len) {
+	print_matrix_list(arr, len);
+	printf("len=%d\n", len);
+	for (int i = 0; i < len; i++) {
+		printf("i=%d\n", i);
+		Destroy_Matrix(arr[i]);
+	}
 }
 void Destroy_All_Matrices(int num, ...) {
 	va_list valist; 
@@ -248,9 +268,9 @@ void print_raw_array(unsigned int *arr, int len) {
 		printf("%d  ", arr[i]);
 	puts("");
 }
-void print_matrix_list(Matrix *m, int len) {
+void print_matrix_list(Matrix **m, int len) {
 	for (int i = 0; i < len; i++) {
-		print_matrix(m + i);
+		print_matrix(m[i]);
 	}
 }
 void print_raw_matrix(Matrix *m) {
