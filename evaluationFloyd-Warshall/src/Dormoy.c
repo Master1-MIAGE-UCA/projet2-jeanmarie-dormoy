@@ -104,15 +104,12 @@ void Scatter_A_Lines(
 						(*sub_matrices_a)[i]->size,
 						MPI_INT, (rank + 1) % numprocs,
 						0, MPI_COMM_WORLD);
-			
-			//MPI_Barrier(MPI_COMM_WORLD);
 			break;
 		default:
 			printf("process %d\n", rank);
 			for (int i = 0; i < numprocs - rank; i++) {
 				MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
 				MPI_Get_count(&status, MPI_INT, &size_msg);
-				printf("size_msg%d\n", size_msg);
 				buffer = calloc(size_msg, sizeof(unsigned int));
 				if (!buffer) {
 					fprintf(stderr, "buffer: calloc error\n");
@@ -126,36 +123,33 @@ void Scatter_A_Lines(
 					MPI_Send(buffer, size_msg, MPI_INT,
 							(rank + 1) % numprocs, 0,
 							MPI_COMM_WORLD);
-				//else {
-				_exit[0] = 255;
-				//MPI_Send(_exit, 1, MPI_INT, 0, 0, 
-				//		MPI_COMM_WORLD);
-				//MPI_Barrier(MPI_COMM_WORLD);
-				//}
-				//if (buffer) free(buffer);
+				else {
+					_exit[0] = 255;
+					MPI_Send(_exit, 1, MPI_INT, 0, 0, 
+							MPI_COMM_WORLD);
+				}
+				if (buffer) free(buffer);
 				
 			}
 			break;
 	}
 }
 
-void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
-		int len_submat_a, Matrix *a){
-/*	unsigned int* buffer1, *buffer2,* buffer3;
-	buffer1 = calloc(1, sizeof(unsigned int));
-	buffer2 = calloc(1, sizeof(unsigned int));
-	buffer3 = calloc(1, sizeof(unsigned int));*/
+void Finalizer(
+		int rank, int numprocs,
+		Matrix **sub_matrices_a, int len_submat_a, Matrix *a){
+	unsigned int *buffer = calloc(1, sizeof(unsigned int));
 	switch(rank) {
 		case 0:
-			//print_matrix_list(sub_matrices_a, len_submat_a);
-//			if (*buffer == 255) {
-				//Destroy_All_Matrices(1, a);
-//				printf("===>buffer=%d\n", *buffer);
-				printf("=>submat_a=%p\n", (void*) sub_matrices_a);
-				printf("=>len_submat_a=%d\n", len_submat_a);
+			MPI_Recv(buffer, 1, MPI_INT, rank - 1, 0,
+					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (*buffer == 255) {
+				//printf("===>buffer=%d\n", *buffer);
+				//printf("=>submat_a=%p\n", (void*) sub_matrices_a);
+				//printf("=>len_submat_a=%d\n", len_submat_a);
 				Destroy_All_Matrices(1, a);
 				Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-//			}	
+			}	
 			break;
 		default:
 			break;
@@ -185,17 +179,11 @@ int main(int argc, char *argv[]) {
 	Scatter_A_Lines(fp, rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a);
 	//finalizaion
-	puts("hello here");
 
 	//MPI_Barrier(MPI_COMM_WORLD);
-	Finalizer(rank, numprocs, sub_matrices_a, len_submat_a,
-			a);
-	switch(rank) {
-		case 0:
-			//Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-
-		break;
-	}
+	Finalizer(
+			rank, numprocs, sub_matrices_a,
+			len_submat_a, a);
 	MPI_Finalize();
 	return 0;
 }
@@ -227,23 +215,22 @@ Matrix *new_Matrix(int height, int width) {
  * .---------------.
  */
 void Destroy_Matrix(Matrix *m) {
-	printf("======>debuuug: %p\n", (void*) m);
-	printf("======>debuuug: %p\n", (void*) m->data);
-	print_matrix(m);
+	//printf("======>debuuug: %p\n", (void*) m);
+	//printf("======>debuuug: %p\n", (void*) m->data);
 	if (m) {
-		puts("1");
+		//puts("1");
 		if (m->data)
 			free(m->data);
-		puts("2");
+		//puts("2");
 		free(m);
-		puts("3");
+		//puts("3");
 	}
 }
 void Destroy_Matrix_Array(Matrix **arr, int len) {
-	print_matrix_list(arr, len);
-	printf("len=%d\n", len);
+	//print_matrix_list(arr, len);
+	//printf("len=%d\n", len);
 	for (int i = 0; i < len; i++) {
-		printf("i=%d\n", i);
+		//printf("i=%d\n", i);
 		Destroy_Matrix(arr[i]);
 	}
 }
