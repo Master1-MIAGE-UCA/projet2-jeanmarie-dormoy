@@ -34,6 +34,8 @@ Matrix *build_matrix(FILE *fp);
 
 /* Matrix filling & copying */
 void randomlyFillMatrix(Matrix *m);
+unsigned int* unsigned_int_cpy(
+		unsigned int *dest, unsigned int *src, int len);
 Matrix *matrixcpy(Matrix *src);
 Matrix *matrixcpy_bis(Matrix *dest, Matrix *src);
 Matrix *matrixcpy_reverseIndex(Matrix *src);
@@ -50,8 +52,8 @@ void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset);
 void print_raw_matrix_list(Matrix **m, int len);
 
 
-void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
-		int len_submat_a, Matrix *a);
+//void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
+//		int len_submat_a, Matrix *a);
 
 Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){ 
 	int lines_A, remain, lines_remaining, divider, offset = 0;
@@ -143,12 +145,12 @@ void Scatter_A_Lines(
 			}
 			*a = new_Matrix(11, 4);
 			randomlyFillMatrix(*a);
-			puts("a:");
-			print_matrix(*a);
+			//puts("a:");
+			//print_matrix(*a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					*a, numprocs, len_submat_a);
 			printf("len=%d\n", *len_submat_a);
-			print_matrix_list(*sub_matrices_a, *len_submat_a);
+			//print_matrix_list(*sub_matrices_a, *len_submat_a);
 			
 			/*
 			for (int i = 0; i < numprocs - 1; i++)
@@ -192,11 +194,13 @@ void Scatter_A_Lines(
 
 void Scatter_B_Cols(
 		int rank, int numprocs, MPI_Status status,
-		Matrix ***sub_matrices_b, int *len_submat_b, Matrix **b) {
-	//unsigned int *_exit;//, *buffer = NULL, ;
-	//int size_msg;
-	//_exit = calloc(1, sizeof(unsigned int));
-	//Matrix *temp;
+		Matrix ***sub_matrices_b, int *len_submat_b, 
+		Matrix **b, Matrix **local_b_submatrix) {
+	int size_msg;
+	unsigned int *dimensions, *buffer = NULL;
+	Matrix *ptr_m;
+	dimensions = calloc(2, sizeof(unsigned int));
+	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
 			puts("process 0");
@@ -206,55 +210,90 @@ void Scatter_B_Cols(
 			print_matrix(*b);
 			*sub_matrices_b = Explode_B_Into_Columns(
 					*b, numprocs, len_submat_b);
-			//temp = matrixcpy_reverseIndex(*b);
-			//print_matrix(temp);
 			printf("len=%d\n", *len_submat_b);
-			print_raw_matrix_list(*sub_matrices_b, *len_submat_b);
-			puts("---------");
+			//print_raw_matrix_list(*sub_matrices_b, *len_submat_b);
 			print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
-			/*
-			for (int i = 0; i < numprocs - 1; i++)
+			
+			for (int i = 0; i < numprocs - 1; i++) {
+				ptr_m = (*sub_matrices_b)[i];
+				dimensions[0] = ptr_m->height;
+				dimensions[1] = ptr_m->width;	
+				MPI_Send(dimensions, 2, MPI_INT,
+						(rank +1) % numprocs, 0, MPI_COMM_WORLD);
 				MPI_Send(
-						(*sub_matrices_a)[i]->data,
-						(*sub_matrices_a)[i]->size,
+						ptr_m->data, ptr_m->size,
 						MPI_INT, (rank + 1) % numprocs,
-						0, MPI_COMM_WORLD);*/
+						0, MPI_COMM_WORLD);
+			}
+			*local_b_submatrix = (*sub_matrices_b)[numprocs-1];
+			puts("p0 finally got");
+			print_matrix(*local_b_submatrix);
 			break;
 		default:
 			printf("process %d\n", rank);
-
+			for (int i = 0; i < numprocs - rank; i++) {
+				MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
+				MPI_Get_count(&status, MPI_INT, &size_msg);
+				if (size_msg == 2) {
+					MPI_Recv(dimensions, size_msg, MPI_INT,
+							rank - 1, 0, MPI_COMM_WORLD,
+							MPI_STATUS_IGNORE);
+				}
+				MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
+				MPI_Get_count(&status, MPI_INT, &size_msg);
+				buffer = calloc(size_msg, sizeof(unsigned int));
+				if (!buffer) {
+					fprintf(stderr, "buffer: calloc error\n");
+					exit(10);
+				}
+				MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
+		   				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				printf("received at rank: %d\n", rank);
+				print_raw_array(buffer, size_msg);
+				
+				//if (*local_b_submatrix)
+				//	free(*local_b_submatrix);	
+				if (i == numprocs - rank - 1) {
+					*local_b_submatrix = new_Matrix(
+						dimensions[0], dimensions[1]);
+					unsigned_int_cpy(
+							(*local_b_submatrix)->data, 
+							buffer, size_msg);
+					printf("%d finally got:", rank);
+					print_matrix(*local_b_submatrix);
+				}
+				if (rank != numprocs - 1) {
+					MPI_Send(dimensions, 2, MPI_INT,
+							(rank + 1) % numprocs, 0,
+							MPI_COMM_WORLD);
+					MPI_Send(buffer, size_msg, MPI_INT,
+							(rank + 1) % numprocs, 0,
+							MPI_COMM_WORLD);
+				}
+				if (buffer) free(buffer);
+			}
 			break;
 	}
 }
-			
+
+/*
 void Finalizer(
 		int rank, int numprocs,
 		Matrix **sub_matrices_a, int len_submat_a, Matrix *a){
 	unsigned int *buffer = calloc(1, sizeof(unsigned int));
-	switch(rank) {
-		case 0:
-			MPI_Recv(buffer, 1, MPI_INT, rank - 1, 0,
-					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			if (*buffer == 255) {
-				//printf("===>buffer=%d\n", *buffer);
-				//printf("=>submat_a=%p\n", (void*) sub_matrices_a);
-				//printf("=>len_submat_a=%d\n", len_submat_a);
-				Destroy_All_Matrices(1, a);
-				Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-			}	
-			break;
-		default:
-			break;
-	}	
-}
+	free(buffer);
+}*/
 int main(int argc, char *argv[]) {
     int rank, numprocs, len_submat_a, len_submat_b;
 	Matrix **sub_matrices_a, *a, **sub_matrices_b, *b;
+	Matrix *local_b_submatrix;
 	FILE *fp;
+	//unsigned int *buffer = NULL;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Status status;
+	//buffer = calloc(1, sizeof(unsigned int));
 	if (argc != 2) {
 		fprintf(stderr,
 				"usage:\n\tmpirun -np X ./Dormoy input.txt");
@@ -271,13 +310,18 @@ int main(int argc, char *argv[]) {
 	Scatter_A_Lines(fp, rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a);
 	Scatter_B_Cols(rank, numprocs, status,
-			&sub_matrices_b, &len_submat_b, &b);
-	//finalizaion
+			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
 	
-	//MPI_Barrier(MPI_COMM_WORLD);
-	Finalizer(
-			rank, numprocs, sub_matrices_a,
-			len_submat_a, a);
+	/* Finalizer */
+	switch(rank) {
+		case 0:
+			Destroy_All_Matrices(2, a, b);
+			Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
+			Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
+			break;
+		default:
+			break;
+	}	
 	MPI_Finalize();
 	return 0;
 }
@@ -292,11 +336,9 @@ Matrix *new_Matrix(int height, int width) {
 		fprintf(stderr, "new_Matrix: Matrix malloc error\n");
 		exit(4);
 	}
-	puts("after first malloc");
 	m->width = width;
 	m->height = height;
 	m->size = width * height;
-	puts("before 2nd malloc");
 	m->data = calloc(m->size, sizeof(unsigned int));
 
 	if (!m->data) {
@@ -386,6 +428,7 @@ void print_matrix(Matrix *m) {
 		puts("print_matrix: null Matrix*");
 		return;
 	}
+	printf("h=%d w=%d\n", m->height, m->width);
 	int len = m->width * m->height;
 	for (int i = 0; i < len; ++i) {
 		if (i % m->width == 0)
@@ -410,6 +453,12 @@ void randomlyFillMatrix(Matrix *m){
 	for(int i=0; i < m->size; i++){
 			m->data[i] = rand() % 200 + 1;
 	}
+}
+unsigned int* unsigned_int_cpy(
+		unsigned int *dest, unsigned int *src, int len) {
+	for (int i = 0; i < len; i++)
+		dest[i] = src[i];
+	return dest;	
 }
 Matrix *matrixcpy(Matrix *src) {
 	if (!src || !src->data)
@@ -609,7 +658,6 @@ void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset_col) {
 		for (int col = *offset_col;
 				col < *offset_col + m->width;
 				col++) {
-			//printf("line=%d, col=%d\n", line, col);
 			m->data[counter] = GET(B, line, col);
 			counter += 1;
 		}
