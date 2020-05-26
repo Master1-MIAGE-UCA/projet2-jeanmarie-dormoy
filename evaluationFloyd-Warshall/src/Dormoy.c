@@ -10,7 +10,6 @@
 #include <stdarg.h>
 #define LINE_SIZE 500
 
-struct Compare { int val;};
 typedef struct Matrix {
     unsigned int *data;
     int width;
@@ -22,9 +21,6 @@ typedef struct Matrix {
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define CHECK_INF(a, b) (a == UINT_MAX || b == UINT_MAX) ? \
 	UINT_MAX : (a + b)
-
-#pragma omp declare reduction(start : struct Compare : \
-		omp_out = omp_in.val < omp_out.val ? omp_in : omp_out)
 
 Matrix *new_Matrix(int height, int width);
 void Destroy_Matrix(Matrix *m);
@@ -66,6 +62,7 @@ Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
 Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 
 Matrix *parallelMultiplyBySelf(Matrix *m);
+Matrix *parallelMultiply(Matrix *a, Matrix *b);
 
 
 void Scatter_A_Lines(
@@ -237,7 +234,7 @@ int main(int argc, char *argv[]) {
 		   *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
-	Matrix *input_matx, *res;
+	Matrix *input_matx, *res, *temp;
     int rank, numprocs;
 	FILE *fp;
     MPI_Init(&argc, &argv);
@@ -247,11 +244,17 @@ int main(int argc, char *argv[]) {
 	
 	if (rank == 0) {	
 		File_Reading(argc, argv, &fp, &input_matx);
-		print_matrix(input_matx);
+		//print_matrix(input_matx);
 		Transform_A_Into_W(input_matx);	
 		puts("here W");
 		print_matrix(input_matx);
 		res = parallelMultiplyBySelf(input_matx);
+		for (int i = 1; i < input_matx->height; i++) {
+			temp = matrixcpy(res);
+			Destroy_Matrix(res);
+			res = parallelMultiply(temp, input_matx);
+			Destroy_Matrix(temp);
+		}
 		print_matrix(res);
 	}
 	
@@ -263,7 +266,7 @@ int main(int argc, char *argv[]) {
 	*/	
 	/* Finalizer */
 	if (rank == 0) {
-		Destroy_All_Matrices(1, input_matx);
+		Destroy_All_Matrices(2, input_matx, res);
 		fclose(fp);
 	}
 	Destroy_All_Matrices(4, 
@@ -620,34 +623,25 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	Matrix *convB = matrixcpy_reverseIndex(b);
 	int i, j, k, iOff, jOff, current_min, a_oprd, b_oprd;
 	unsigned int _min;
-	//struct Compare min_start;
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 
-/*	#pragma omp parallel for private(i, j, k, iOff, jOff, \
-			current_min, min, a_oprd, b_oprd) shared(res) */
+	#pragma omp parallel for private(i, j, k, iOff, jOff, \
+			current_min, _min, a_oprd, b_oprd) shared(res)
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
 		for(j=0; j < b->width; j++){
 			jOff = j * b->height;
 			current_min = UINT_MAX;
-			_min = UINT_MAX/2;
-				//CHECK_INF(
-//					a->data[iOff],convB->data[jOff]);
-			//#pragma omp parallel for reduction(min: min)
+			_min = UINT_MAX;
+			#pragma omp parallel for reduction(min: _min)
 			for(k=0; k< a->width; k++){
 				a_oprd = a->data[iOff + k] ;
 				b_oprd = convB->data[jOff + k];
 				current_min = Check_Infinity(a_oprd, b_oprd);
-				//printf("a_op=%u  b_op=%u\n", a_oprd, b_oprd);
-				//printf("current_min=%u\n", current_min);
-				//printf("before min=%u\n", _min);
 				if (current_min < _min)
 					_min = current_min;
-				//printf("boolean=%d\n", current_min < _min);
-				//printf("after min=%u\n", _min);
 			}
-			//printf("end k=%d min=%u\n", k, _min);
 			SET(res, i, j, _min);
 		}
 	}
