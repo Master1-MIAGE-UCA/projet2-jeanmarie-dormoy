@@ -206,19 +206,19 @@ void Scatter_B_Cols(
 			printf("len=%d\n", *len_submat_b);
 			//print_raw_matrix_list(*sub_matrices_b, *len_submat_b);
 			print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
-			
-			for (int i = 0; i < numprocs - 1; i++) {
-				ptr_m = (*sub_matrices_b)[i];
-				dimensions[0] = ptr_m->height;
-				dimensions[1] = ptr_m->width;	
-				MPI_Send(dimensions, 2, MPI_INT,
-						(rank +1) % numprocs, 0, MPI_COMM_WORLD);
-				MPI_Send(
-						ptr_m->data, ptr_m->size,
-						MPI_INT, (rank + 1) % numprocs,
-						0, MPI_COMM_WORLD);
-			}
-			*local_b_submatrix = (*sub_matrices_b)[numprocs-1];
+			if (numprocs >= 2)	
+				for (int i = numprocs - 1; i > 0; i--) {
+					ptr_m = (*sub_matrices_b)[i];
+					dimensions[0] = ptr_m->height;
+					dimensions[1] = ptr_m->width;	
+					MPI_Send(dimensions, 2, MPI_INT,
+							(rank +1) % numprocs, 0, MPI_COMM_WORLD);
+					MPI_Send(
+							ptr_m->data, ptr_m->size,
+							MPI_INT, (rank + 1) % numprocs,
+							0, MPI_COMM_WORLD);
+				}
+			*local_b_submatrix = (*sub_matrices_b)[0];
 			puts("p0 finally got");
 			print_matrix(*local_b_submatrix);
 			break;
@@ -271,8 +271,8 @@ int main(int argc, char *argv[]) {
 	Matrix **sub_matrices_a = NULL,
 		   *a = NULL;
 	int len_submat_a = 0;
-	Matrix *local_a_submatrix = NULL,
-   		   *local_b_submatrix = NULL, 
+	Matrix *local_a_submatrix = NULL;
+   	Matrix	   *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
 	int len_submat_b = 0;
@@ -286,16 +286,17 @@ int main(int argc, char *argv[]) {
 	
 	File_Reading(argc, argv, &fp, &input_matx);
 	/* Scatter Step */
-	Scatter_A_Lines(rank, numprocs, status,
-			&sub_matrices_a, &len_submat_a, &a);
-	/*
+	/*Scatter_A_Lines(rank, numprocs, status,
+			&sub_matrices_a, &len_submat_a, &a);*/
+	
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
-	*/	
+		
 	/* Finalizer */
 	switch(rank) {
 		case 0:
-			Destroy_All_Matrices(3, a, b, local_b_submatrix);
+			Destroy_All_Matrices(3, 
+					a, b, local_a_submatrix, local_b_submatrix);
 			Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
 			Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
 			break;
@@ -363,6 +364,7 @@ void Destroy_All_Matrices(int num, ...) {
  */
 
 void print_raw_array(unsigned int *arr, int len) {
+	//printf("print_raw_array arr=%p len=%d\n", arr, len);
 	for (int i = 0; i < len; i++)
 		printf("%d  ", arr[i]);
 	puts("\\");

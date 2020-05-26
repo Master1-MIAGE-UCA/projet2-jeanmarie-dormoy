@@ -1,8 +1,11 @@
 CC=mpicc
+EXEC=mpirun
 CFLAGS=-Wall -fopenmp -lm -g
 
-re: clean Dormoy
+run: Dormoy
+	./run.sh $(np)
 
+re: clean Dormoy
 Dormoy: Dormoy.c
 	$(CC) $(CFLAGS) -o $@ $^
 
