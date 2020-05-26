@@ -603,10 +603,6 @@ unsigned int Check_Infinity(unsigned int a, unsigned int b) {
 		return UINT_MAX;
 	return a + b;
 }
-
-inline unsigned int min(unsigned int a, unsigned int b) {
-	return a < b ? a : b;
-}
 /*
  * Compute W^n by replacing the multiplication operation with an 
  * addition and the addition with a min. 
@@ -625,7 +621,6 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	unsigned int _min;
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
-
 	#pragma omp parallel for private(i, j, k, iOff, jOff, \
 			current_min, _min, a_oprd, b_oprd) shared(res)
 	for(i=0; i < a->height; i++){
@@ -656,11 +651,6 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 Matrix *parallelMultiplyBySelf(Matrix *m) {
 	Matrix *a, *b, *res;
 	a = matrixcpy(m); b= matrixcpy(m);
-	/*
-	puts("a:");
-	print_matrix(a);
-	puts("b:");
-	print_matrix(b);*/
 	res = parallelMultiply(a, b);
 	Destroy_All_Matrices(2, a, b);
 	return res;
