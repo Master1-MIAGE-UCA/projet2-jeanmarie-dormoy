@@ -218,7 +218,7 @@ void Scatter_B_Cols(
 							MPI_INT, (rank + 1) % numprocs,
 							0, MPI_COMM_WORLD);
 				}
-			*local_b_submatrix = (*sub_matrices_b)[0];
+			*local_b_submatrix = matrixcpy((*sub_matrices_b)[0]);
 			puts("p0 finally got");
 			print_matrix(*local_b_submatrix);
 			break;
@@ -272,7 +272,7 @@ int main(int argc, char *argv[]) {
 		   *a = NULL;
 	int len_submat_a = 0;
 	Matrix *local_a_submatrix = NULL;
-   	Matrix	   *local_b_submatrix = NULL, 
+   	Matrix *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
 	int len_submat_b = 0;
@@ -295,14 +295,14 @@ int main(int argc, char *argv[]) {
 	/* Finalizer */
 	switch(rank) {
 		case 0:
-			Destroy_All_Matrices(3, 
-					a, b, local_a_submatrix, local_b_submatrix);
-			Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-			Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
 			break;
 		default:
 			break;
 	}	
+	Destroy_All_Matrices(4, 
+			a, b, local_a_submatrix, local_b_submatrix);
+	Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
+	Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
 	MPI_Finalize();
 	return 0;
 }
@@ -349,9 +349,11 @@ void Destroy_Matrix_Array(Matrix **arr, int len) {
 void Destroy_All_Matrices(int num, ...) {
 	va_list valist; 
 	Matrix *temp; 
-    va_start(valist, num); 
+    va_start(valist, num);
     for (int i = 0; i < num; i++) { 
+		//printf("i=%d\n", i);
 		temp = va_arg(valist, Matrix*);
+		//printf("matrix @= %p\n", (void*) temp);
 		if (temp)
 			Destroy_Matrix(temp);
 	}
