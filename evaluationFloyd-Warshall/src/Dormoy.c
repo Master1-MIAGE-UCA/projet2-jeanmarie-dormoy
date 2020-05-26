@@ -29,8 +29,11 @@ void print_raw_array(unsigned int *arr, int len);
 /* File Reading */
 int first_pass(char *s);
 void fill_matrix_with_line(
-		unsigned int *array, int *index, char *line);
+		unsigned int *array, int *index, 
+		char *line);
 Matrix *build_matrix(FILE *fp);
+void File_Reading(int argc, char *argv[], 
+		FILE **fp, Matrix **input_mat);
 
 /* Matrix filling & copying */
 void randomlyFillMatrix(Matrix *m);
@@ -50,10 +53,6 @@ void print_matrix_list_bis(Matrix **m, int len);
 
 void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset);
 void print_raw_matrix_list(Matrix **m, int len);
-
-
-//void Finalizer(int rank, int numprocs, Matrix **sub_matrices_a,
-//		int len_submat_a, Matrix *a);
 
 Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){ 
 	int lines_A, remain, lines_remaining, divider, offset = 0;
@@ -103,7 +102,8 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 		//we have divider sub matrices
 		if (!matrix_list) {
 			fprintf(stderr,
-					"Explode_A_Into_Lines: matrix_list calloc error");
+					"Explode_B_Into_Columns: matrix_list \
+					calloc error");
 			exit(9);
 		}
 		for (int i = 0; i < numprocs; i++) {
@@ -128,21 +128,14 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 }
 
 void Scatter_A_Lines(
-		FILE *fp, int rank, int numprocs, MPI_Status status,
+		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_a, int *len_submat_a, Matrix **a) {
 	unsigned int *_exit;//, *buffer = NULL, ;
 	//int size_msg;
-	Matrix	*mat;
 	_exit = calloc(1, sizeof(unsigned int));
 	switch(rank) {
 		case 0:	
 			puts("process 0");
-			//printf("argv[0]=%s\n", argv[0]);
-			mat = build_matrix(fp);
-			if (!mat) {
-				fprintf(stderr, "var mat: build_matrix ret NULL\n");
-				exit(6);
-			}
 			*a = new_Matrix(11, 4);
 			randomlyFillMatrix(*a);
 			//puts("a:");
@@ -251,8 +244,6 @@ void Scatter_B_Cols(
 				printf("received at rank: %d\n", rank);
 				print_raw_array(buffer, size_msg);
 				
-				//if (*local_b_submatrix)
-				//	free(*local_b_submatrix);	
 				if (i == numprocs - rank - 1) {
 					*local_b_submatrix = new_Matrix(
 						dimensions[0], dimensions[1]);
@@ -276,46 +267,35 @@ void Scatter_B_Cols(
 	}
 }
 
-/*
-void Finalizer(
-		int rank, int numprocs,
-		Matrix **sub_matrices_a, int len_submat_a, Matrix *a){
-	unsigned int *buffer = calloc(1, sizeof(unsigned int));
-	free(buffer);
-}*/
 int main(int argc, char *argv[]) {
-    int rank, numprocs, len_submat_a, len_submat_b;
-	Matrix **sub_matrices_a, *a, **sub_matrices_b, *b;
-	Matrix *local_b_submatrix;
+	Matrix **sub_matrices_a = NULL,
+		   *a = NULL;
+	int len_submat_a = 0;
+	Matrix *local_a_submatrix = NULL,
+   		   *local_b_submatrix = NULL, 
+		   *b = NULL, 
+		   **sub_matrices_b = NULL;
+	int len_submat_b = 0;
+	Matrix *input_matx;
+    int rank, numprocs;
 	FILE *fp;
-	//unsigned int *buffer = NULL;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Status status;
-	//buffer = calloc(1, sizeof(unsigned int));
-	if (argc != 2) {
-		fprintf(stderr,
-				"usage:\n\tmpirun -np X ./Dormoy input.txt");
-		exit(1);
-	}
-	if (argv[1])
-		fp = fopen(argv[1], "r");
-    if (!fp) {
-		fprintf(stderr, "error opening file%s\n",
-				argv[1]);
-        exit(2);
-	}
-	//initialization
-	Scatter_A_Lines(fp, rank, numprocs, status,
+	
+	File_Reading(argc, argv, &fp, &input_matx);
+	/* Scatter Step */
+	Scatter_A_Lines(rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a);
+	/*
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
-	
+	*/	
 	/* Finalizer */
 	switch(rank) {
 		case 0:
-			Destroy_All_Matrices(2, a, b);
+			Destroy_All_Matrices(3, a, b, local_b_submatrix);
 			Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
 			Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
 			break;
@@ -353,24 +333,17 @@ Matrix *new_Matrix(int height, int width) {
  * .---------------.
  */
 void Destroy_Matrix(Matrix *m) {
-	//printf("======>debuuug: %p\n", (void*) m);
-	//printf("======>debuuug: %p\n", (void*) m->data);
 	if (m) {
-		//puts("1");
 		if (m->data)
 			free(m->data);
-		//puts("2");
 		free(m);
-		//puts("3");
 	}
 }
 void Destroy_Matrix_Array(Matrix **arr, int len) {
-	//print_matrix_list(arr, len);
-	//printf("len=%d\n", len);
-	for (int i = 0; i < len; i++) {
-		//printf("i=%d\n", i);
-		Destroy_Matrix(arr[i]);
-	}
+	if (arr)
+		for (int i = 0; i < len; i++) {
+			Destroy_Matrix(arr[i]);
+		}
 }
 void Destroy_All_Matrices(int num, ...) {
 	va_list valist; 
@@ -378,7 +351,8 @@ void Destroy_All_Matrices(int num, ...) {
     va_start(valist, num); 
     for (int i = 0; i < num; i++) { 
 		temp = va_arg(valist, Matrix*);
-		Destroy_Matrix(temp);
+		if (temp)
+			Destroy_Matrix(temp);
 	}
     va_end(valist); 
 }
@@ -556,6 +530,26 @@ Matrix *build_matrix(FILE *fp) {
 	if (line) free(line);
 	if (save) free(save);
 	return res;
+}
+void File_Reading(int argc, char *argv[], 
+		FILE **fp, Matrix **input_mat) {
+	if (argc != 2) {
+		fprintf(stderr,
+				"usage:\n\tmpirun -np X ./Dormoy input.txt");
+		exit(1);
+	}
+	if (argv[1])
+		*fp = fopen(argv[1], "r");
+    if (!*fp) {
+		fprintf(stderr, "error opening file%s\n",
+				argv[1]);
+        exit(2);
+	}
+	*input_mat = build_matrix(*fp);
+	if (!*input_mat) {
+		fprintf(stderr, "var mat: build_matrix ret NULL\n");
+		exit(6);
+	}
 }
 /* .--------------------------. 
  * |    SEQUENTIAL PRODUCT    |
