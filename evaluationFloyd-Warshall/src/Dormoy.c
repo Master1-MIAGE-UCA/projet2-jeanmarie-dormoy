@@ -1,5 +1,6 @@
 #include <omp.h>
 #include <mpi.h>
+#include <limits.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -219,7 +220,23 @@ void Scatter_B_Cols(
 			break;
 	}
 }
+/*
+ *wij = 0 if i = j
+wij = weight of  (i,j) if there is an edge between i and j
+wij = +inf otherwise
+ * */
+void Transform_A_Into_W(Matrix *a) {
+	Matrix *temp = matrixcpy(a);
+	for (int line = 0; line < a->height; line++)
+		for (int col = 0; col < a->width; col++)
+			if (line == col)
+				SET(a, line, col, 0);
+			else if (GET(temp, line, col));
+			else
+				SET(a, line, col, UINT_MAX);
 
+	free(temp);
+}
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Matrix **sub_matrices_a = NULL,
@@ -234,9 +251,14 @@ int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Status status;
+	//MPI_Status status;
 	
-	File_Reading(argc, argv, &fp, &input_matx);
+	if (rank == 0) {	
+		File_Reading(argc, argv, &fp, &input_matx);
+		print_matrix(input_matx);
+		Transform_A_Into_W(input_matx);	
+		//print_matrix(input_matx);
+	}
 	
 	/*
 	Scatter_A_Lines(rank, numprocs, status,
@@ -245,6 +267,10 @@ int main(int argc, char *argv[]) {
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
 	*/	
 	/* Finalizer */
+	if (rank == 0) {
+		Destroy_All_Matrices(1, input_matx);
+		fclose(fp);
+	}
 	Destroy_All_Matrices(4, 
 			a, b, local_a_submatrix, local_b_submatrix);
 	Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
@@ -297,8 +323,8 @@ void Destroy_All_Matrices(int num, ...) {
 	Matrix *temp; 
     va_start(valist, num);
     for (int i = 0; i < num; i++) { 
-		//printf("i=%d\n", i);
 		temp = va_arg(valist, Matrix*);
+		//printf("i=%d\n", i);
 		//printf("matrix @= %p\n", (void*) temp);
 		if (temp)
 			Destroy_Matrix(temp);
@@ -355,13 +381,22 @@ void print_matrix(Matrix *m) {
 	printf("h=%d w=%d\n", m->height, m->width);
 	int len = m->width * m->height;
 	for (int i = 0; i < len; ++i) {
-		if (i % m->width == 0)
-			if (i == 0)
-				printf("%5u ", m->data[i]);
+		if (m->data[i] == UINT_MAX)
+			if (i % m->width == 0)
+				if (i == 0)
+					printf("    i ");
+				else
+					printf("\n    i ");
 			else
-				printf("\n%5u ", m->data[i]);
+				printf("    i ");
 		else
-			printf("%5u ", m->data[i]);
+			if (i % m->width == 0)
+				if (i == 0)
+					printf("%5u ", m->data[i]);
+				else
+					printf("\n%5u ", m->data[i]);
+			else
+				printf("%5u ", m->data[i]);
 	}
 	puts("\n");
 }
@@ -422,9 +457,12 @@ int first_pass(char *s) {
 	int len = 0;
 	token = strtok(s, " ");
 	while (token) {
-		len +=1;
+		//printf("|%s| ", token);
+		if (strcmp(token, "\n") != 0)
+			len +=1;
 		token = strtok(NULL, " ");
 	}
+	//puts("");
 	return len;
 }
 void fill_matrix_with_line(
@@ -432,8 +470,11 @@ void fill_matrix_with_line(
 	char *token;
 	token = strtok(line, " ");
 	while (token) {
-		array[*index] = atoi(token);
-		*index += 1;
+		//printf("|%s| ", token);
+		if (strcmp(token, "\n") != 0) {
+			array[*index] = atoi(token);
+			*index += 1;
+		}
 		token = strtok(NULL, " ");
 	}
 }
