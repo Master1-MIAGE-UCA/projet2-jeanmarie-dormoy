@@ -14,6 +14,8 @@ mycode_mpi: mycode_mpi.c
 
 #re: clean mycode_mpi
 
+del_logs:
+	rm -rf logs/*
 
 clean:
 	rm -rf *~ mycode_mpi Dormoy

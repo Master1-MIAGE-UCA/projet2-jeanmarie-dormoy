@@ -39,6 +39,9 @@ Matrix *build_matrix(FILE *fp);
 void File_Reading(int argc, char *argv[], 
 		FILE **fp, Matrix **input_mat);
 
+/* Initialization*/
+void Transform_A_Into_W(Matrix *a);
+
 /* Matrix filling & copying */
 void randomlyFillMatrix(Matrix *m);
 unsigned int* unsigned_int_cpy(
@@ -53,14 +56,14 @@ int Test_Equals(Matrix *a, Matrix *b);
 /* Scatter */
 void fill_submatrix(Matrix *m, Matrix *A, int *offset);
 void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset);
+Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
+Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 
 void print_matrix_list(Matrix **m, int len);
 void print_matrix_list_bis(Matrix **m, int len);
 void print_raw_matrix_list(Matrix **m, int len);
 
-Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
-Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
-
+/* Specific Product with min/+ */
 Matrix *parallelMultiplyBySelf(Matrix *m);
 Matrix *parallelMultiply(Matrix *a, Matrix *b);
 
@@ -77,14 +80,12 @@ void Scatter_A_Lines(
 	switch(rank) {
 		case 0:	
 			puts("process 0");
-			*a = new_Matrix(11, 4);
+			*a = new_Matrix(4, 2);
 			randomlyFillMatrix(*a);
 			puts("a:");
 			print_matrix(*a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					*a, numprocs, len_submat_a);
-			//printf("len=%d\n", *len_submat_a);
-			//print_matrix_list(*sub_matrices_a, *len_submat_a);
 			if (numprocs >= 2)	
 				for (int i = numprocs - 1; i > 0; i--) {
 					ptr_m = (*sub_matrices_a)[i];
@@ -98,8 +99,6 @@ void Scatter_A_Lines(
 							0, MPI_COMM_WORLD);
 				}
 			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
-			//puts("p0 finally got");
-			//print_matrix(*local_a_submatrix);
 			break;
 		default:
 			printf("process %d\n", rank);
@@ -120,16 +119,12 @@ void Scatter_A_Lines(
 				}
 				MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
 		   				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				//printf("received at rank: %d\n", rank);
-				//print_raw_array(buffer, size_msg);
 				if (i == numprocs - rank - 1) {
 					*local_a_submatrix = new_Matrix(
 						dimensions[0], dimensions[1]);
 					unsigned_int_cpy(
 							(*local_a_submatrix)->data, 
 							buffer, size_msg);
-					//printf("%d finally got:", rank);
-					//print_matrix(*local_a_submatrix);
 				}
 				if (rank != numprocs - 1) {
 					MPI_Send(dimensions, 2, MPI_INT,
@@ -225,7 +220,109 @@ void Scatter_B_Cols(
 			break;
 	}
 }
-void Transform_A_Into_W(Matrix *a);
+void Make_Local_A_Submatrices_Circulate(
+		int rank, int numprocs, Matrix **local_a_submatrix) {
+	int size_msg;
+	MPI_Status status;
+	unsigned int *dimensions, *buffer = NULL;
+	dimensions = calloc(2, sizeof(unsigned int));
+	Matrix *submat_a = *local_a_submatrix;
+	static int circulation_no = 0;
+	switch(rank) {
+		case 0:	
+			//puts("process 0");
+			dimensions[0] = submat_a->height;
+			dimensions[1] = submat_a->width;	
+			MPI_Send(dimensions, 2, MPI_INT,
+					(rank +1) % numprocs, 0, MPI_COMM_WORLD);
+			MPI_Send(
+					submat_a->data, submat_a->size,
+					MPI_INT, (rank + 1) % numprocs,
+					0, MPI_COMM_WORLD);
+			MPI_Probe(numprocs - 1, 0, MPI_COMM_WORLD, &status);
+			MPI_Get_count(&status, MPI_INT, &size_msg);
+			if (size_msg == 2) {
+				MPI_Recv(dimensions, size_msg, MPI_INT,
+						numprocs - 1, 0, MPI_COMM_WORLD,
+						MPI_STATUS_IGNORE);
+			}
+			MPI_Probe(numprocs - 1, 0, MPI_COMM_WORLD, &status);
+			MPI_Get_count(&status, MPI_INT, &size_msg);
+			buffer = calloc(size_msg, sizeof(unsigned int));
+			if (!buffer) {
+				fprintf(stderr, "buffer: calloc error\n");
+				exit(10);
+			}
+			//printf("rank %d local a submatrix\nBEFORE\n", rank);
+			//print_matrix(*local_a_submatrix);
+			MPI_Recv(buffer, size_msg, MPI_INT, numprocs - 1, 0,
+					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (*local_a_submatrix)
+				free(*local_a_submatrix);
+			*local_a_submatrix = new_Matrix(
+					dimensions[0], dimensions[1]);
+			unsigned_int_cpy(
+					(*local_a_submatrix)->data, 
+					buffer, size_msg);
+			//printf("rank %d local a submatrix\nAFTER\n", rank);
+			//print_matrix(*local_a_submatrix);
+			//printf("receveid at rank %d\n", rank);
+			//print_raw_array(buffer, size_msg);
+			if (buffer) free(buffer);
+			break;
+			
+		default:
+			//printf("process %d\n", rank);
+			//printf("rank %d local_a_submatrix\n", rank);
+			//print_matrix(*local_a_submatrix);
+			dimensions[0] = submat_a->height;
+			dimensions[1] = submat_a->width;	
+			MPI_Send(dimensions, 2, MPI_INT,
+					(rank +1) % numprocs, 0, MPI_COMM_WORLD);
+			MPI_Send(
+					submat_a->data, submat_a->size,
+					MPI_INT, (rank + 1) % numprocs,
+					0, MPI_COMM_WORLD);
+			MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
+			MPI_Get_count(&status, MPI_INT, &size_msg);
+			if (size_msg == 2) {
+				MPI_Recv(dimensions, size_msg, MPI_INT,
+						rank - 1, 0, MPI_COMM_WORLD,
+						MPI_STATUS_IGNORE);
+			}
+			MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
+			MPI_Get_count(&status, MPI_INT, &size_msg);
+			buffer = calloc(size_msg, sizeof(unsigned int));
+			if (!buffer) {
+				fprintf(stderr, "buffer: calloc error\n");
+				exit(10);
+			}
+			//if (1) {
+			//	printf("rank %d local a submatrix\nBEFORE\n", rank);
+			//	print_matrix(*local_a_submatrix);
+			//}
+			MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
+					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (*local_a_submatrix)
+				free(*local_a_submatrix);
+			*local_a_submatrix = new_Matrix(
+					dimensions[0], dimensions[1]);
+			unsigned_int_cpy(
+					(*local_a_submatrix)->data, 
+					buffer, size_msg);
+			
+			//if (1) {
+			//	printf("rank %d local a submatrix\nAFTER\n", rank);
+			//	print_matrix(*local_a_submatrix);
+			//	printf("receveid at rank %d\n", rank);
+			//	print_raw_array(buffer, size_msg);
+			//}
+			if (buffer) free(buffer);
+			break;
+	}
+	if (dimensions) free(dimensions);	
+	circulation_no += 1;
+}
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Matrix **sub_matrices_a = NULL,
@@ -234,33 +331,37 @@ int main(int argc, char *argv[]) {
 		   *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
-	Matrix *input_matx, *res, *temp;
+	Matrix *input_matx, *res = NULL;
     int rank, numprocs;
 	FILE *fp;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	//MPI_Status status;
-	
+	MPI_Status status;
+
+	/* Initialization */	
 	if (rank == 0) {	
 		File_Reading(argc, argv, &fp, &input_matx);
-		//print_matrix(input_matx);
-		Transform_A_Into_W(input_matx);	
-		puts("here W");
-		print_matrix(input_matx);
-		res = parallelMultiplyBySelf(input_matx);
-		for (int i = 1; i < input_matx->height; i++) {
-			temp = matrixcpy(res);
-			Destroy_Matrix(res);
-			res = parallelMultiply(temp, input_matx);
-			Destroy_Matrix(temp);
-		}
-		print_matrix(res);
 	}
 	
-	/*
+	
 	Scatter_A_Lines(rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a, &local_a_submatrix);
+	printf("rank %d has A submatrix:\n", rank);
+	print_matrix(local_a_submatrix);
+
+	Make_Local_A_Submatrices_Circulate(
+			rank, numprocs, &local_a_submatrix);
+	puts("We make circulation 1 Time !!"	);
+	printf("rank %d has A submatrix:\n", rank);
+	print_matrix(local_a_submatrix);
+	
+	Make_Local_A_Submatrices_Circulate(
+			rank, numprocs, &local_a_submatrix);
+	puts("We make circulation 2 Time !!"	);
+	printf("rank %d has A submatrix:\n", rank);
+	print_matrix(local_a_submatrix);
+	/*
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
 	*/	
@@ -376,7 +477,7 @@ void print_matrix(Matrix *m) {
 		puts("print_matrix: null Matrix*");
 		return;
 	}
-	printf("h=%d w=%d\n", m->height, m->width);
+	//printf("h=%d w=%d\n", m->height, m->width);
 	int len = m->width * m->height;
 	for (int i = 0; i < len; ++i) {
 		if (m->data[i] == UINT_MAX)
@@ -583,13 +684,12 @@ Matrix *sequentialMultiplyBySelf(Matrix *m) {
 /* .------------------------. 
  * |    PARALLEL PRODUCT    |
  * .------------------------.
- *
- *
- * wij = 0 if i = j
- * wij = weight of  (i,j) if there is an edge between i and j
- * wij = +inf otherwise
- * */
+ */
 void Transform_A_Into_W(Matrix *a) {
+	/* wij = 0 if i = j
+	 * wij = weight of  (i,j) if there is an edge between i and j
+	 * wij = +inf otherwise
+	 * */
 	for (int line = 0; line < a->height; line++)
 		for (int col = 0; col < a->width; col++)
 			if (line == col)
@@ -682,7 +782,6 @@ Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){
 	divider = lines_A / numprocs;
 	remain = lines_A % numprocs;
 	Matrix **matrix_list = NULL;
-	printf("remain=%d\n", remain);
 
 	matrix_list = calloc(numprocs, sizeof(Matrix*));
 	*len = numprocs;
