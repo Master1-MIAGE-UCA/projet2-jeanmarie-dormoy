@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #define LINE_SIZE 500
 
+struct Compare { int val;};
 typedef struct Matrix {
     unsigned int *data;
     int width;
@@ -18,6 +19,12 @@ typedef struct Matrix {
 } Matrix;
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define CHECK_INF(a, b) (a == UINT_MAX || b == UINT_MAX) ? \
+	UINT_MAX : (a + b)
+
+#pragma omp declare reduction(start : struct Compare : \
+		omp_out = omp_in.val < omp_out.val ? omp_in : omp_out)
 
 Matrix *new_Matrix(int height, int width);
 void Destroy_Matrix(Matrix *m);
@@ -58,6 +65,7 @@ void print_raw_matrix_list(Matrix **m, int len);
 Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
 Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 
+Matrix *parallelMultiplyBySelf(Matrix *m);
 
 
 void Scatter_A_Lines(
@@ -220,23 +228,7 @@ void Scatter_B_Cols(
 			break;
 	}
 }
-/*
- *wij = 0 if i = j
-wij = weight of  (i,j) if there is an edge between i and j
-wij = +inf otherwise
- * */
-void Transform_A_Into_W(Matrix *a) {
-	Matrix *temp = matrixcpy(a);
-	for (int line = 0; line < a->height; line++)
-		for (int col = 0; col < a->width; col++)
-			if (line == col)
-				SET(a, line, col, 0);
-			else if (GET(temp, line, col));
-			else
-				SET(a, line, col, UINT_MAX);
-
-	free(temp);
-}
+void Transform_A_Into_W(Matrix *a);
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Matrix **sub_matrices_a = NULL,
@@ -245,7 +237,7 @@ int main(int argc, char *argv[]) {
 		   *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
-	Matrix *input_matx;
+	Matrix *input_matx, *res;
     int rank, numprocs;
 	FILE *fp;
     MPI_Init(&argc, &argv);
@@ -257,7 +249,10 @@ int main(int argc, char *argv[]) {
 		File_Reading(argc, argv, &fp, &input_matx);
 		print_matrix(input_matx);
 		Transform_A_Into_W(input_matx);	
-		//print_matrix(input_matx);
+		puts("here W");
+		print_matrix(input_matx);
+		res = parallelMultiplyBySelf(input_matx);
+		print_matrix(res);
 	}
 	
 	/*
@@ -415,6 +410,7 @@ void randomlyFillMatrix(Matrix *m){
 }
 unsigned int* unsigned_int_cpy(
 		unsigned int *dest, unsigned int *src, int len) {
+	#pragma omp parallel for
 	for (int i = 0; i < len; i++)
 		dest[i] = src[i];
 	return dest;	
@@ -509,7 +505,8 @@ Matrix *build_matrix(FILE *fp) {
 		return NULL;
 	}
 	res->height = res->width = n;
-	res->data = calloc(n * n, sizeof(unsigned int));
+	res->size = n * n;
+	res->data = calloc(res->size, sizeof(unsigned int));
 	if (!res->data) {
 		fprintf(stderr, "build_matrix: res->data malloc error\n");
 		exit(5);
@@ -583,6 +580,33 @@ Matrix *sequentialMultiplyBySelf(Matrix *m) {
 /* .------------------------. 
  * |    PARALLEL PRODUCT    |
  * .------------------------.
+ *
+ *
+ * wij = 0 if i = j
+ * wij = weight of  (i,j) if there is an edge between i and j
+ * wij = +inf otherwise
+ * */
+void Transform_A_Into_W(Matrix *a) {
+	for (int line = 0; line < a->height; line++)
+		for (int col = 0; col < a->width; col++)
+			if (line == col)
+				SET(a, line, col, 0);
+			else if (GET(a, line, col) == 0)
+				SET(a, line, col, UINT_MAX);
+}
+unsigned int Check_Infinity(unsigned int a, unsigned int b) {
+	unsigned int t = a + b;
+	if (t < a || t < b)
+		return UINT_MAX;
+	return a + b;
+}
+
+inline unsigned int min(unsigned int a, unsigned int b) {
+	return a < b ? a : b;
+}
+/*
+ * Compute W^n by replacing the multiplication operation with an 
+ * addition and the addition with a min. 
  */
 Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	if (a->width != b->height) {
@@ -594,22 +618,37 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	}
 	Matrix *res = new_Matrix(a->height, b->width);
 	Matrix *convB = matrixcpy_reverseIndex(b);
-	int i, j, k, iOff, jOff, sum;
+	int i, j, k, iOff, jOff, current_min, a_oprd, b_oprd;
+	unsigned int _min;
+	//struct Compare min_start;
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 
-	#pragma omp parallel for private(i, j, k, iOff, jOff, sum) \
-		shared(res)
+/*	#pragma omp parallel for private(i, j, k, iOff, jOff, \
+			current_min, min, a_oprd, b_oprd) shared(res) */
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
 		for(j=0; j < b->width; j++){
 			jOff = j * b->height;
-			sum = 0;
-			#pragma omp parallel for reduction(+: sum)
+			current_min = UINT_MAX;
+			_min = UINT_MAX/2;
+				//CHECK_INF(
+//					a->data[iOff],convB->data[jOff]);
+			//#pragma omp parallel for reduction(min: min)
 			for(k=0; k< a->width; k++){
-				sum += a->data[iOff + k] * convB->data[jOff + k];
+				a_oprd = a->data[iOff + k] ;
+				b_oprd = convB->data[jOff + k];
+				current_min = Check_Infinity(a_oprd, b_oprd);
+				//printf("a_op=%u  b_op=%u\n", a_oprd, b_oprd);
+				//printf("current_min=%u\n", current_min);
+				//printf("before min=%u\n", _min);
+				if (current_min < _min)
+					_min = current_min;
+				//printf("boolean=%d\n", current_min < _min);
+				//printf("after min=%u\n", _min);
 			}
-			SET(res, i, j, sum);
+			//printf("end k=%d min=%u\n", k, _min);
+			SET(res, i, j, _min);
 		}
 	}
 	gettimeofday(&t1, 0);
@@ -623,6 +662,11 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 Matrix *parallelMultiplyBySelf(Matrix *m) {
 	Matrix *a, *b, *res;
 	a = matrixcpy(m); b= matrixcpy(m);
+	/*
+	puts("a:");
+	print_matrix(a);
+	puts("b:");
+	print_matrix(b);*/
 	res = parallelMultiply(a, b);
 	Destroy_All_Matrices(2, a, b);
 	return res;
