@@ -292,8 +292,9 @@ void Make_Local_A_Submatrices_Circulate(
 				exit(10);
 			}
 			//if (1) {
-			//	printf("rank %d local a submatrix\nBEFORE\n", rank);
-			//	print_matrix(*local_a_submatrix);
+			printf("call N°%d rank %d local A submatrix\nBEFORE\n",
+					circulation_no, rank);
+			print_matrix(*local_a_submatrix);
 			//}
 			MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
 					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -306,10 +307,12 @@ void Make_Local_A_Submatrices_Circulate(
 					buffer, size_msg);
 			
 			//if (1) {
-			//	printf("rank %d local a submatrix\nAFTER\n", rank);
-			//	print_matrix(*local_a_submatrix);
-			//	printf("receveid at rank %d\n", rank);
-			//	print_raw_array(buffer, size_msg);
+			printf("call N°%d rank %d local A submatrix\nAFTER\n",
+					circulation_no, rank);
+			print_matrix(*local_a_submatrix);
+			printf("call N°%d we receveid at rank %d\n",
+					circulation_no, rank);
+			print_raw_array(buffer, size_msg);
 			//}
 			dimensions[0] = save->height;
 			dimensions[1] = save->width;	
@@ -333,9 +336,9 @@ int main(int argc, char *argv[]) {
 		   *local_b_submatrix = NULL, 
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
-	Matrix *input_matx, *res = NULL;
+	Matrix *input_matx = NULL, *res = NULL;
     int rank, numprocs;
-	FILE *fp;
+	FILE *fp = NULL;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -343,7 +346,7 @@ int main(int argc, char *argv[]) {
 
 	/* Initialization */	
 	if (rank == 0) {	
-		File_Reading(argc, argv, &fp, &input_matx);
+		//File_Reading(argc, argv, &fp, &input_matx);
 	}
 	
 	
@@ -354,15 +357,15 @@ int main(int argc, char *argv[]) {
 
 	Make_Local_A_Submatrices_Circulate(
 			rank, numprocs, &local_a_submatrix);
-	puts("We make circulation 1 Time !!"	);
-	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
+	//puts("We make circulation 1 Time !!"	);
+	//printf("rank %d has A submatrix:\n", rank);
+	//print_matrix(local_a_submatrix);
 	
 	Make_Local_A_Submatrices_Circulate(
 			rank, numprocs, &local_a_submatrix);
-	puts("We make circulation 2 Time !!"	);
-	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
+	//puts("We make circulation 2 Time !!"	);
+	//printf("rank %d has A submatrix:\n", rank);
+	//print_matrix(local_a_submatrix);
 	/*
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
@@ -370,7 +373,7 @@ int main(int argc, char *argv[]) {
 	/* Finalizer */
 	if (rank == 0) {
 		Destroy_All_Matrices(2, input_matx, res);
-		fclose(fp);
+		if (fp) fclose(fp);
 	}
 	Destroy_All_Matrices(4, 
 			a, b, local_a_submatrix, local_b_submatrix);
