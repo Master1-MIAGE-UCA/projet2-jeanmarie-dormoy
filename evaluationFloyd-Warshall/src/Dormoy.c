@@ -77,69 +77,28 @@ void Scatter_A_Lines(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_a, int *len_submat_a,
 		Matrix **a, Matrix **local_a_submatrix) {
-	int size_msg;
-	unsigned int *dimensions, *buffer = NULL;
 	Matrix *ptr_m;
-	dimensions = calloc(2, sizeof(unsigned int));
 	*local_a_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
 			puts("process 0");
-			*a = new_Matrix(3, 3);
+			*a = new_Matrix(11, 11);
 			randomlyFillMatrix(*a);
 			puts("a:");
 			print_matrix(*a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					*a, numprocs, len_submat_a);
-			if (numprocs >= 2)	
-				for (int i = numprocs - 1; i > 0; i--) {
-					ptr_m = (*sub_matrices_a)[i];
-					dimensions[0] = ptr_m->height;
-					dimensions[1] = ptr_m->width;	
-					MPI_Send(dimensions, 2, MPI_INT,
-							(rank +1) % numprocs, 0, MPI_COMM_WORLD);
-					MPI_Send(
-							ptr_m->data, ptr_m->size,
-							MPI_INT, (rank + 1) % numprocs,
-							0, MPI_COMM_WORLD);
-				}
+			for (int i = numprocs - 1; i > 0; i--) {
+				ptr_m = (*sub_matrices_a)[i];
+				My_MPI_Send(ptr_m, (rank + 1) % numprocs, 0);
+			}
 			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
 			break;
 		default:
 			printf("process %d\n", rank);
 			for (int i = 0; i < numprocs - rank; i++) {
-				MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
-				MPI_Get_count(&status, MPI_INT, &size_msg);
-				if (size_msg == 2) {
-					MPI_Recv(dimensions, size_msg, MPI_INT,
-							rank - 1, 0, MPI_COMM_WORLD,
-							MPI_STATUS_IGNORE);
-				}
-				MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
-				MPI_Get_count(&status, MPI_INT, &size_msg);
-				buffer = calloc(size_msg, sizeof(unsigned int));
-				if (!buffer) {
-					fprintf(stderr, "buffer: calloc error\n");
-					exit(10);
-				}
-				MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
-		   				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				if (i == numprocs - rank - 1) {
-					*local_a_submatrix = new_Matrix(
-						dimensions[0], dimensions[1]);
-					unsigned_int_cpy(
-							(*local_a_submatrix)->data, 
-							buffer, size_msg);
-				}
-				if (rank != numprocs - 1) {
-					MPI_Send(dimensions, 2, MPI_INT,
-							(rank + 1) % numprocs, 0,
-							MPI_COMM_WORLD);
-					MPI_Send(buffer, size_msg, MPI_INT,
-							(rank + 1) % numprocs, 0,
-							MPI_COMM_WORLD);
-				}
-				if (buffer) free(buffer);
+				Transmit_SubMatrix(i, numprocs,
+						rank, local_a_submatrix);
 			}
 			break;
 	}
@@ -161,15 +120,13 @@ void Scatter_B_Cols(
 			print_matrix(*b);
 			*sub_matrices_b = Explode_B_Into_Columns(
 					*b, numprocs, len_submat_b);
-			printf("len=%d\n", *len_submat_b);
-			print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
+			//printf("len=%d\n", *len_submat_b);
+			//print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_b)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, 0);
 			}
 			*local_b_submatrix = matrixcpy((*sub_matrices_b)[0]);
-			puts("p0 finally got");
-			print_matrix(*local_b_submatrix);
 			break;
 		default:
 			printf("process %d\n", rank);
@@ -186,6 +143,7 @@ void Transmit_SubMatrix(
 	MPI_Status status;
 	int size_msg, dimensions[2], sender = rank - 1;
 	unsigned int *buffer;
+
 	MPI_Probe(sender, 0, MPI_COMM_WORLD, &status);
 	MPI_Get_count(&status, MPI_INT, &size_msg);
 	if (size_msg == 2) {
@@ -210,8 +168,8 @@ void Transmit_SubMatrix(
 		unsigned_int_cpy(
 				(*local_submatrix)->data, 
 				buffer, size_msg);
-		printf("%d finally got:", rank);
-		print_matrix(*local_submatrix);
+		//printf("%d finally got:\n", rank);
+		//print_matrix(*local_submatrix);
 	}
 	if (rank != numprocs - 1) {
 		MPI_Send(dimensions, 2, MPI_INT, (rank + 1) % numprocs, 
@@ -301,15 +259,17 @@ int main(int argc, char *argv[]) {
 		//File_Reading(argc, argv, &fp, &input_matx);
 	}
 	
-	/*
+	
 	Scatter_A_Lines(rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a, &local_a_submatrix);
 	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);*/
+	print_matrix(local_a_submatrix);
 
-	
+	/*
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
+	printf("rank %d has B submatrix:\n", rank);
+	print_matrix(local_b_submatrix);*/
 	
 	/* Finalizer */
 	if (rank == 0) {
