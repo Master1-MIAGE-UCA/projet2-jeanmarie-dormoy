@@ -226,7 +226,7 @@ void Make_Local_A_Submatrices_Circulate(
 	MPI_Status status;
 	unsigned int *dimensions, *buffer = NULL;
 	dimensions = calloc(2, sizeof(unsigned int));
-	Matrix *submat_a = *local_a_submatrix;
+	Matrix *save, *submat_a = *local_a_submatrix;
 	static int circulation_no = 0;
 	switch(rank) {
 		case 0:	
@@ -258,7 +258,7 @@ void Make_Local_A_Submatrices_Circulate(
 			MPI_Recv(buffer, size_msg, MPI_INT, numprocs - 1, 0,
 					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			if (*local_a_submatrix)
-				free(*local_a_submatrix);
+				Destroy_Matrix(*local_a_submatrix);
 			*local_a_submatrix = new_Matrix(
 					dimensions[0], dimensions[1]);
 			unsigned_int_cpy(
@@ -275,14 +275,8 @@ void Make_Local_A_Submatrices_Circulate(
 			//printf("process %d\n", rank);
 			//printf("rank %d local_a_submatrix\n", rank);
 			//print_matrix(*local_a_submatrix);
-			dimensions[0] = submat_a->height;
-			dimensions[1] = submat_a->width;	
-			MPI_Send(dimensions, 2, MPI_INT,
-					(rank +1) % numprocs, 0, MPI_COMM_WORLD);
-			MPI_Send(
-					submat_a->data, submat_a->size,
-					MPI_INT, (rank + 1) % numprocs,
-					0, MPI_COMM_WORLD);
+			save = matrixcpy(submat_a);
+
 			MPI_Probe(rank - 1, 0, MPI_COMM_WORLD, &status);
 			MPI_Get_count(&status, MPI_INT, &size_msg);
 			if (size_msg == 2) {
@@ -304,7 +298,7 @@ void Make_Local_A_Submatrices_Circulate(
 			MPI_Recv(buffer, size_msg, MPI_INT, rank - 1, 0,
 					MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			if (*local_a_submatrix)
-				free(*local_a_submatrix);
+				Destroy_Matrix(*local_a_submatrix);
 			*local_a_submatrix = new_Matrix(
 					dimensions[0], dimensions[1]);
 			unsigned_int_cpy(
@@ -317,6 +311,14 @@ void Make_Local_A_Submatrices_Circulate(
 			//	printf("receveid at rank %d\n", rank);
 			//	print_raw_array(buffer, size_msg);
 			//}
+			dimensions[0] = save->height;
+			dimensions[1] = save->width;	
+			MPI_Send(dimensions, 2, MPI_INT,
+					(rank +1) % numprocs, 0, MPI_COMM_WORLD);
+			MPI_Send(
+					save->data, save->size,
+					MPI_INT, (rank + 1) % numprocs,
+					0, MPI_COMM_WORLD);
 			if (buffer) free(buffer);
 			break;
 	}
