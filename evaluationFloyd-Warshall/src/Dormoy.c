@@ -32,9 +32,8 @@ void print_raw_array(unsigned int *arr, int len);
 
 /* File Reading */
 int first_pass(char *s);
-void fill_matrix_with_line(
-		unsigned int *array, int *index, 
-		char *line);
+void fill_matrix_with_line(unsigned int *array, 
+		int *index, char *line);
 Matrix *build_matrix(FILE *fp);
 void File_Reading(int argc, char *argv[], 
 		FILE **fp, Matrix **input_mat);
@@ -58,6 +57,14 @@ void fill_submatrix(Matrix *m, Matrix *A, int *offset);
 void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset);
 Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
 Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
+void Scatter_A_Lines(
+		int rank, int numprocs, MPI_Status status,
+		Matrix ***sub_matrices_a, int *len_submat_a,
+		Matrix **a, Matrix **local_a_submatrix, int round);
+void Scatter_B_Cols(
+		int rank, int numprocs, MPI_Status status,
+		Matrix ***sub_matrices_b, int *len_submat_b, 
+		Matrix **b, Matrix **local_b_submatrix, int round);
 
 void print_matrix_list(Matrix **m, int len);
 void print_matrix_list_bis(Matrix **m, int len);
@@ -71,114 +78,8 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b);
 void My_MPI_Send(Matrix *m, int recipient, int round);
 void My_MPI_Recv(Matrix **local_a_submatrix, int sender, int round);
 void Transmit_SubMatrix(int iter, int numprocs, 
-		int rank, Matrix **local_submatrix);
+		int rank, Matrix **local_submatrix, int round);
 
-void Scatter_A_Lines(
-		int rank, int numprocs, MPI_Status status,
-		Matrix ***sub_matrices_a, int *len_submat_a,
-		Matrix **a, Matrix **local_a_submatrix) {
-	Matrix *ptr_m;
-	*local_a_submatrix = NULL;	
-	switch(rank) {
-		case 0:	
-			puts("process 0");
-			*a = new_Matrix(11, 11);
-			randomlyFillMatrix(*a);
-			puts("a:");
-			print_matrix(*a);
-			*sub_matrices_a = Explode_A_Into_Lines(
-					*a, numprocs, len_submat_a);
-			for (int i = numprocs - 1; i > 0; i--) {
-				ptr_m = (*sub_matrices_a)[i];
-				My_MPI_Send(ptr_m, (rank + 1) % numprocs, 0);
-			}
-			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
-			break;
-		default:
-			printf("process %d\n", rank);
-			for (int i = 0; i < numprocs - rank; i++) {
-				Transmit_SubMatrix(i, numprocs,
-						rank, local_a_submatrix);
-			}
-			break;
-	}
-}
-
-
-void Scatter_B_Cols(
-		int rank, int numprocs, MPI_Status status,
-		Matrix ***sub_matrices_b, int *len_submat_b, 
-		Matrix **b, Matrix **local_b_submatrix) {
-	Matrix *ptr_m;
-	*local_b_submatrix = NULL;	
-	switch(rank) {
-		case 0:	
-			puts("process 0");
-			*b = new_Matrix(3, 11);
-			randomlyFillMatrix(*b);
-			puts("b:");
-			print_matrix(*b);
-			*sub_matrices_b = Explode_B_Into_Columns(
-					*b, numprocs, len_submat_b);
-			//printf("len=%d\n", *len_submat_b);
-			//print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
-			for (int i = numprocs - 1; i > 0; i--) {
-				ptr_m = (*sub_matrices_b)[i];
-				My_MPI_Send(ptr_m, (rank + 1) % numprocs, 0);
-			}
-			*local_b_submatrix = matrixcpy((*sub_matrices_b)[0]);
-			break;
-		default:
-			printf("process %d\n", rank);
-			for (int i = 0; i < numprocs - rank; i++) {
-				Transmit_SubMatrix(i, numprocs, 
-						rank, local_b_submatrix);
-			}
-			break;
-	}
-}
-void Transmit_SubMatrix(
-		int iter, int numprocs, 
-		int rank, Matrix **local_submatrix) {
-	MPI_Status status;
-	int size_msg, dimensions[2], sender = rank - 1;
-	unsigned int *buffer;
-
-	MPI_Probe(sender, 0, MPI_COMM_WORLD, &status);
-	MPI_Get_count(&status, MPI_INT, &size_msg);
-	if (size_msg == 2) {
-		MPI_Recv(dimensions, size_msg, MPI_INT,
-				sender, 0, MPI_COMM_WORLD,
-				MPI_STATUS_IGNORE);
-	}
-	MPI_Probe(sender, 0, MPI_COMM_WORLD, &status);
-	MPI_Get_count(&status, MPI_INT, &size_msg);
-	buffer = calloc(size_msg, sizeof(unsigned int));
-	if (!buffer) {
-		fprintf(stderr, "buffer: calloc error\n");
-		exit(10);
-	}
-	MPI_Recv(buffer, size_msg, MPI_INT, sender, 0,
-			MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	//printf("received at rank: %d\n", rank);
-	//print_raw_array(buffer, size_msg);
-	if (iter == numprocs - rank - 1) {
-		*local_submatrix = new_Matrix(
-			dimensions[0], dimensions[1]);
-		unsigned_int_cpy(
-				(*local_submatrix)->data, 
-				buffer, size_msg);
-		//printf("%d finally got:\n", rank);
-		//print_matrix(*local_submatrix);
-	}
-	if (rank != numprocs - 1) {
-		MPI_Send(dimensions, 2, MPI_INT, (rank + 1) % numprocs, 
-				0, MPI_COMM_WORLD);
-		MPI_Send(buffer, size_msg, MPI_INT, (rank + 1) % numprocs,
-				0, MPI_COMM_WORLD);
-	}
-	free(buffer);
-}
 void My_MPI_Send(Matrix *m, int recipient, int round) {
 	unsigned int dimensions[2];
 	dimensions[0] = m->height;
@@ -259,17 +160,16 @@ int main(int argc, char *argv[]) {
 		//File_Reading(argc, argv, &fp, &input_matx);
 	}
 	
-	
-	Scatter_A_Lines(rank, numprocs, status,
-			&sub_matrices_a, &len_submat_a, &a, &local_a_submatrix);
+	Scatter_A_Lines(rank, numprocs, status, &sub_matrices_a, 
+			&len_submat_a, &a, &local_a_submatrix, 0);
 	printf("rank %d has A submatrix:\n", rank);
 	print_matrix(local_a_submatrix);
 
-	/*
-	Scatter_B_Cols(rank, numprocs, status,
-			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
+	
+	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
+			&len_submat_b, &b, &local_b_submatrix, 1);
 	printf("rank %d has B submatrix:\n", rank);
-	print_matrix(local_b_submatrix);*/
+	print_matrix(local_b_submatrix);
 	
 	/* Finalizer */
 	if (rank == 0) {
@@ -750,6 +650,110 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 		fill_submatrix_bis(matrix_list[numprocs - 1], B, &offset);
 	}
 	return matrix_list;
+}
+void Scatter_A_Lines(
+		int rank, int numprocs, MPI_Status status,
+		Matrix ***sub_matrices_a, int *len_submat_a,
+		Matrix **a, Matrix **local_a_submatrix, int round) {
+	Matrix *ptr_m;
+	*local_a_submatrix = NULL;	
+	switch(rank) {
+		case 0:	
+			puts("process 0");
+			*a = new_Matrix(4, 4);
+			randomlyFillMatrix(*a);
+			puts("a:");
+			print_matrix(*a);
+			*sub_matrices_a = Explode_A_Into_Lines(
+					*a, numprocs, len_submat_a);
+			for (int i = numprocs - 1; i > 0; i--) {
+				ptr_m = (*sub_matrices_a)[i];
+				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
+			}
+			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
+			break;
+		default:
+			printf("process %d\n", rank);
+			for (int i = 0; i < numprocs - rank; i++) {
+				Transmit_SubMatrix(i, numprocs,
+						rank, local_a_submatrix, round);
+			}
+			break;
+	}
+}
+void Scatter_B_Cols(
+		int rank, int numprocs, MPI_Status status,
+		Matrix ***sub_matrices_b, int *len_submat_b, 
+		Matrix **b, Matrix **local_b_submatrix, int round) {
+	Matrix *ptr_m;
+	*local_b_submatrix = NULL;	
+	switch(rank) {
+		case 0:	
+			puts("process 0");
+			*b = new_Matrix(5, 5);
+			randomlyFillMatrix(*b);
+			puts("b:");
+			print_matrix(*b);
+			*sub_matrices_b = Explode_B_Into_Columns(
+					*b, numprocs, len_submat_b);
+			//printf("len=%d\n", *len_submat_b);
+			//print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
+			for (int i = numprocs - 1; i > 0; i--) {
+				ptr_m = (*sub_matrices_b)[i];
+				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
+			}
+			*local_b_submatrix = matrixcpy((*sub_matrices_b)[0]);
+			break;
+		default:
+			printf("process %d\n", rank);
+			for (int i = 0; i < numprocs - rank; i++) {
+				Transmit_SubMatrix(i, numprocs, 
+						rank, local_b_submatrix, round);
+			}
+			break;
+	}
+}
+void Transmit_SubMatrix(
+		int iter, int numprocs, 
+		int rank, Matrix **local_submatrix, int round) {
+	MPI_Status status;
+	int size_msg, dimensions[2], sender = rank - 1;
+	unsigned int *buffer;
+
+	MPI_Probe(sender, round, MPI_COMM_WORLD, &status);
+	MPI_Get_count(&status, MPI_INT, &size_msg);
+	if (size_msg == 2) {
+		MPI_Recv(dimensions, size_msg, MPI_INT,
+				sender, round, MPI_COMM_WORLD,
+				MPI_STATUS_IGNORE);
+	}
+	MPI_Probe(sender, round, MPI_COMM_WORLD, &status);
+	MPI_Get_count(&status, MPI_INT, &size_msg);
+	buffer = calloc(size_msg, sizeof(unsigned int));
+	if (!buffer) {
+		fprintf(stderr, "buffer: calloc error\n");
+		exit(10);
+	}
+	MPI_Recv(buffer, size_msg, MPI_INT, sender, round,
+			MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	//printf("received at rank: %d\n", rank);
+	//print_raw_array(buffer, size_msg);
+	if (iter == numprocs - rank - 1) {
+		*local_submatrix = new_Matrix(
+			dimensions[0], dimensions[1]);
+		unsigned_int_cpy(
+				(*local_submatrix)->data, 
+				buffer, size_msg);
+		//printf("%d finally got:\n", rank);
+		//print_matrix(*local_submatrix);
+	}
+	if (rank != numprocs - 1) {
+		MPI_Send(dimensions, 2, MPI_INT, (rank + 1) % numprocs, 
+				round, MPI_COMM_WORLD);
+		MPI_Send(buffer, size_msg, MPI_INT, (rank + 1) % numprocs,
+				round, MPI_COMM_WORLD);
+	}
+	free(buffer);
 }
 
 /* .-----------. 
