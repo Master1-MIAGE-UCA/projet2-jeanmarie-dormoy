@@ -67,6 +67,11 @@ void print_raw_matrix_list(Matrix **m, int len);
 Matrix *parallelMultiplyBySelf(Matrix *m);
 Matrix *parallelMultiply(Matrix *a, Matrix *b);
 
+/* IPC Communication */
+void My_MPI_Send(Matrix *m, int recipient, int round);
+void My_MPI_Recv(Matrix **local_a_submatrix, int sender, int round);
+void Transmit_SubMatrix(int iter, int numprocs, 
+		int rank, Matrix **local_submatrix);
 
 void Scatter_A_Lines(
 		int rank, int numprocs, MPI_Status status,
@@ -145,10 +150,7 @@ void Scatter_B_Cols(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_b, int *len_submat_b, 
 		Matrix **b, Matrix **local_b_submatrix) {
-	int size_msg;
-	unsigned int *dimensions, *buffer = NULL;
 	Matrix *ptr_m;
-	dimensions = calloc(2, sizeof(unsigned int));
 	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
@@ -172,8 +174,8 @@ void Scatter_B_Cols(
 		default:
 			printf("process %d\n", rank);
 			for (int i = 0; i < numprocs - rank; i++) {
-				Transmit_SubMatrix(
-						i, numprocs, rank, local_b_submatrix);
+				Transmit_SubMatrix(i, numprocs, 
+						rank, local_b_submatrix);
 			}
 			break;
 	}
@@ -209,7 +211,7 @@ void Transmit_SubMatrix(
 				(*local_submatrix)->data, 
 				buffer, size_msg);
 		printf("%d finally got:", rank);
-		print_matrix(*local_b_submatrix);
+		print_matrix(*local_submatrix);
 	}
 	if (rank != numprocs - 1) {
 		MPI_Send(dimensions, 2, MPI_INT, (rank + 1) % numprocs, 
@@ -299,20 +301,16 @@ int main(int argc, char *argv[]) {
 		//File_Reading(argc, argv, &fp, &input_matx);
 	}
 	
+	/*
 	Scatter_A_Lines(rank, numprocs, status,
 			&sub_matrices_a, &len_submat_a, &a, &local_a_submatrix);
 	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
+	print_matrix(local_a_submatrix);*/
 
-	Make_Local_A_Submatrices_Circulate(
-			rank, numprocs, &local_a_submatrix, 0);
-	//puts("We make circulation 1 Time !!"	);
-	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
-	/*
+	
 	Scatter_B_Cols(rank, numprocs, status,
 			&sub_matrices_b, &len_submat_b, &b, &local_b_submatrix);
-	*/	
+	
 	/* Finalizer */
 	if (rank == 0) {
 		Destroy_All_Matrices(2, input_matx, res);
