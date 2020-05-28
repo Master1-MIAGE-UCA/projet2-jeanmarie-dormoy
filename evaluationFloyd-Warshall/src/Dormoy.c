@@ -23,9 +23,11 @@ typedef struct Matrix {
 	UINT_MAX : (a + b)
 
 Matrix *new_Matrix(int height, int width);
+Matrix *new_Matrix_Crescendo(int height, int width, int base);
 void Destroy_Matrix(Matrix *m);
 void Destroy_All_Matrices(int num, ...);
 void Destroy_Matrix_Array(Matrix **arr, int len);
+
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
 void print_raw_array(unsigned int *arr, int len);
@@ -60,12 +62,13 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 void Scatter_A_Lines(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_a, int *len_submat_a,
-		Matrix **a, Matrix **local_a_submatrix, int round);
+		Matrix *a, Matrix **local_a_submatrix, int round);
 void Scatter_B_Cols(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_b, int *len_submat_b, 
-		Matrix **b, Matrix **local_b_submatrix, int round);
+		Matrix *b, Matrix **local_b_submatrix, int round);
 
+/* Scatter Debug */
 void print_matrix_list(Matrix **m, int len);
 void print_matrix_list_bis(Matrix **m, int len);
 void print_raw_matrix_list(Matrix **m, int len);
@@ -159,17 +162,19 @@ int main(int argc, char *argv[]) {
 	if (rank == 0) {	
 		//File_Reading(argc, argv, &fp, &input_matx);
 	}
-	
+	a = new_Matrix_Crescendo(3, 3, 0);
+	b = new_Matrix_Crescendo(3, 3, 1);
+		
 	Scatter_A_Lines(rank, numprocs, status, &sub_matrices_a, 
-			&len_submat_a, &a, &local_a_submatrix, 0);
-	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
+			&len_submat_a, a, &local_a_submatrix, 0);
+	//printf("rank %d has A submatrix:\n", rank);
+	//print_matrix(local_a_submatrix);
 
 	
 	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
-			&len_submat_b, &b, &local_b_submatrix, 1);
-	printf("rank %d has B submatrix:\n", rank);
-	print_matrix(local_b_submatrix);
+			&len_submat_b, b, &local_b_submatrix, 1);
+	//printf("rank %d has B submatrix:\n", rank);
+	//print_matrix(local_b_submatrix);
 	
 	/* Finalizer */
 	if (rank == 0) {
@@ -204,6 +209,12 @@ Matrix *new_Matrix(int height, int width) {
 		exit(5);
 	}
 	return m;
+}
+Matrix *new_Matrix_Crescendo(int height, int width, int base) {
+	Matrix *res = new_Matrix(height, width);
+	for (int i = 0; i < res->size; i++, base++)
+		res->data[i] = base;
+	return res;
 }
 
 /* .---------------. 
@@ -654,18 +665,17 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 void Scatter_A_Lines(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_a, int *len_submat_a,
-		Matrix **a, Matrix **local_a_submatrix, int round) {
+		Matrix *a, Matrix **local_a_submatrix, int round) {
 	Matrix *ptr_m;
 	*local_a_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
-			puts("process 0");
-			*a = new_Matrix(4, 4);
-			randomlyFillMatrix(*a);
+			//*a = new_Matrix(4, 4);
+			//randomlyFillMatrix(*a);
 			puts("a:");
-			print_matrix(*a);
+			print_matrix(a);
 			*sub_matrices_a = Explode_A_Into_Lines(
-					*a, numprocs, len_submat_a);
+					a, numprocs, len_submat_a);
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_a)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
@@ -673,7 +683,6 @@ void Scatter_A_Lines(
 			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
 			break;
 		default:
-			printf("process %d\n", rank);
 			for (int i = 0; i < numprocs - rank; i++) {
 				Transmit_SubMatrix(i, numprocs,
 						rank, local_a_submatrix, round);
@@ -684,18 +693,17 @@ void Scatter_A_Lines(
 void Scatter_B_Cols(
 		int rank, int numprocs, MPI_Status status,
 		Matrix ***sub_matrices_b, int *len_submat_b, 
-		Matrix **b, Matrix **local_b_submatrix, int round) {
+		Matrix *b, Matrix **local_b_submatrix, int round) {
 	Matrix *ptr_m;
 	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
-			puts("process 0");
-			*b = new_Matrix(5, 5);
-			randomlyFillMatrix(*b);
+			//*b = new_Matrix(5, 5);
+			//randomlyFillMatrix(*b);
 			puts("b:");
-			print_matrix(*b);
+			print_matrix(b);
 			*sub_matrices_b = Explode_B_Into_Columns(
-					*b, numprocs, len_submat_b);
+					b, numprocs, len_submat_b);
 			//printf("len=%d\n", *len_submat_b);
 			//print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
 			for (int i = numprocs - 1; i > 0; i--) {
@@ -705,7 +713,6 @@ void Scatter_B_Cols(
 			*local_b_submatrix = matrixcpy((*sub_matrices_b)[0]);
 			break;
 		default:
-			printf("process %d\n", rank);
 			for (int i = 0; i < numprocs - rank; i++) {
 				Transmit_SubMatrix(i, numprocs, 
 						rank, local_b_submatrix, round);
