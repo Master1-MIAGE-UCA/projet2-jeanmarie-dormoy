@@ -16,6 +16,10 @@ typedef struct Matrix {
     int height;
     int size;
 } Matrix;
+typedef struct Local_Result {
+	int index;
+	Matrix *mat;
+} Local_Result;
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -27,10 +31,14 @@ Matrix *new_Matrix_Crescendo(int height, int width, int base);
 void Destroy_Matrix(Matrix *m);
 void Destroy_All_Matrices(int num, ...);
 void Destroy_Matrix_Array(Matrix **arr, int len);
+void Destroy_Local_Result_Array(Local_Result *local_res, int len);
 
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
 void print_raw_array(unsigned int *arr, int len);
+void print_local_result(Local_Result *local_res, int rank);
+void print_local_result_list(Local_Result *local_res,
+		int len, int rank);
 
 /* File Reading */
 int first_pass(char *s);
@@ -142,6 +150,41 @@ void Make_Local_A_Submatrices_Circulate(
 			break;
 	}
 }
+
+void Do_Local_Computation(int rank, int numprocs,
+		Matrix *local_a_submatrix, Matrix *local_b_submatrix,
+		Local_Result *local_res, int iter) {
+	Matrix *res = parallelMultiply(
+			local_a_submatrix, local_b_submatrix);
+	int index = rank;
+	while (iter) {
+		if (index) index--;
+		else index = numprocs - 1;
+		iter--;
+	}
+	local_res[index].index = index;
+	local_res[index].mat = res;
+}
+void Local_Computation_Each_Proc(
+		int numprocs, int rank, Matrix **local_a_submatrix,
+		Matrix *local_b_submatrix, Local_Result *local_res,
+		int round) {
+
+	for (int i = 0; i < numprocs; i++, round++) {
+		Do_Local_Computation(rank, numprocs, *local_a_submatrix,
+				local_b_submatrix, local_res, i);
+		Make_Local_A_Submatrices_Circulate(
+				rank, numprocs, local_a_submatrix, round);
+	}
+}
+void Initialization_Local_Result(
+		Local_Result **local_res, int numprocs) {
+	*local_res = calloc(numprocs, sizeof(Local_Result));
+	if (!*local_res) {
+		fprintf(stderr, "local_res: calloc error\n");
+		exit(13);
+	}
+}
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Matrix **sub_matrices_a = NULL,
@@ -151,6 +194,7 @@ int main(int argc, char *argv[]) {
 		   *b = NULL, 
 		   **sub_matrices_b = NULL;
 	Matrix *input_matx = NULL, *res = NULL;
+	Local_Result *local_res = NULL;
     int rank, numprocs;
 	FILE *fp = NULL;
     MPI_Init(&argc, &argv);
@@ -161,21 +205,23 @@ int main(int argc, char *argv[]) {
 	/* Initialization */	
 	if (rank == 0) {	
 		//File_Reading(argc, argv, &fp, &input_matx);
+		a = new_Matrix_Crescendo(7, 7, 2);
+		b = new_Matrix_Crescendo(7, 7, 4);
 	}
-	a = new_Matrix_Crescendo(3, 3, 0);
-	b = new_Matrix_Crescendo(3, 3, 1);
-		
+	Initialization_Local_Result(&local_res, numprocs);
+
 	Scatter_A_Lines(rank, numprocs, status, &sub_matrices_a, 
 			&len_submat_a, a, &local_a_submatrix, 0);
 	//printf("rank %d has A submatrix:\n", rank);
 	//print_matrix(local_a_submatrix);
-
-	
 	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
 			&len_submat_b, b, &local_b_submatrix, 1);
 	//printf("rank %d has B submatrix:\n", rank);
 	//print_matrix(local_b_submatrix);
 	
+	Local_Computation_Each_Proc(numprocs, rank,
+		&local_a_submatrix, local_b_submatrix, local_res, 2);
+	print_local_result_list(local_res, numprocs, rank);
 	/* Finalizer */
 	if (rank == 0) {
 		Destroy_All_Matrices(2, input_matx, res);
@@ -185,6 +231,7 @@ int main(int argc, char *argv[]) {
 			a, b, local_a_submatrix, local_b_submatrix);
 	Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
 	Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
+	Destroy_Local_Result_Array(local_res, numprocs);
 	MPI_Finalize();
 	return 0;
 }
@@ -234,6 +281,16 @@ void Destroy_Matrix_Array(Matrix **arr, int len) {
 			Destroy_Matrix(arr[i]);
 		}
 }
+void Destroy_Local_Result_Array(
+		Local_Result *local_res, int len) {
+	if (local_res) {
+		for (int i = 0; i < len; i++) {
+			Destroy_Matrix(local_res[i].mat);
+		}
+		free(local_res);
+	}
+}
+
 void Destroy_All_Matrices(int num, ...) {
 	va_list valist; 
 	Matrix *temp; 
@@ -253,6 +310,20 @@ void Destroy_All_Matrices(int num, ...) {
  * .-----------.
  */
 
+void print_local_result(Local_Result *local_res, int rank) {
+	if (local_res) {
+		printf("rank= %d\n", rank);
+		printf("local_res.index = %d\n", local_res->index);
+		puts("local_res.mat = ");
+		print_matrix(local_res->mat);
+	}
+}
+void print_local_result_list(Local_Result *local_res,
+		int len, int rank) {
+	for (int i = 0; i < len; i++) {
+		print_local_result(local_res + i, rank);
+	}
+}
 void print_raw_array(unsigned int *arr, int len) {
 	//printf("print_raw_array arr=%p len=%d\n", arr, len);
 	for (int i = 0; i < len; i++)
@@ -291,7 +362,7 @@ void print_raw_matrix(Matrix *m) {
 }
 void print_matrix(Matrix *m) {
 	if (!m) {
-		puts("print_matrix: null Matrix*");
+		puts("print_matrix: null Matrix*\n");
 		return;
 	}
 	//printf("h=%d w=%d\n", m->height, m->width);
@@ -562,6 +633,7 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
 		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
 	printf("parallelMultiply time:  %f\n", elapsed);
+	free(convB);
 	return res;
 }
 
