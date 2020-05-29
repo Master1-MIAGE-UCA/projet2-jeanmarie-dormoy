@@ -38,6 +38,8 @@ void Destroy_Matrix_Array(Matrix **arr, int len);
 void Destroy_Local_Result_Array(Local_Result *local_res, int len);
 void Destroy_Local_Result_List(
 		Local_Result **local_res_list, int len);
+void Destroy_Local_Result_Matrix(
+		Local_Result **local_res_list, int len);
 
 /* Display Matrix or unsigned int array */
 void print_raw_array(unsigned int *arr, int len);
@@ -136,14 +138,6 @@ void Initialization_Local_Result_List(
 			exit(15);
 		}
 		temp->mat = NULL;
-		/*
-		temp->mat = calloc(1, sizeof(Matrix));
-		if (!temp->mat) {
-			fprintf(stderr, 
-					"temp->mat local_res_list[%d]: \
-					calloc error\n", i);
-			exit(16);
-		}*/
 		(*local_res_list)[i] = temp;
 	}
 }
@@ -153,28 +147,21 @@ void Gather_Local_Results(
 	Local_Result *temp;
 	switch(rank) {
 		case 0:
-			for (int j = 0; j < numprocs; j++) {
+			for (int j = 0; j < numprocs; j++)
 				Fill_Local_Result_With(local_res_list[0] + j,
 						local_res + j);
-			}
-			//numprocs - 2
 			for (int i = 1; i < numprocs; i++, round++) {
-				/*
-				MPI_Recv_Local_Result_List(rank, numprocs,
-						local_res_list, (rank + 1) %numprocs,
-						round);*/
 				for (int j = 0; j < numprocs; j++) {
-					printf("rank 0 before:\n");
-					print_local_result_list(
-							local_res_list[i], numprocs, rank);
+					//printf("rank 0 before:\n");
+					//print_local_result_list(
+					//		local_res_list[i], numprocs, rank);
 					MPI_Recv_Local_Result(&temp, 1, round);
 					//print_local_result(temp, rank);
-					//local_res_list[0 * numprocs +j] = temp;
 					Fill_Local_Result_With(
 							local_res_list[i] + temp->index, temp);
-					printf("rank 0 after:\n");
-					print_local_result_list(
-							local_res_list[i], numprocs, rank);
+					//printf("rank 0 after:\n");
+					//print_local_result_list(
+					//		local_res_list[i], numprocs, rank);
 					free(temp);
 				}
 			}
@@ -201,6 +188,45 @@ void Gather_Local_Results(
 			break;
 	}
 }
+unsigned int* Get_Lineno(Matrix *m, int line) {
+	unsigned int* res = calloc(m->width, sizeof(unsigned int));
+	if (!res) {
+		fprintf(stderr, "Get_Lineno: calloc error\n");
+		exit(16);
+	}
+	#pragma omp parallel for
+	for (int col = 0; col < m->width; col++)
+		res[col] = GET(m, line, col);
+	return res;
+}
+void Fill_Matrix_With_Results(Matrix *to_fill, 
+		Local_Result **local_res_list, int numprocs) {
+	Local_Result temp;
+	unsigned int *tmp_data;
+	int count = 0, nb_lines;
+
+	for (int index = 0; index < numprocs; index++) {
+		//printf("\nindex=%d ", index);
+		nb_lines = local_res_list[0][index].mat->height;
+		//printf(" nb_lines=%d ", nb_lines);
+		for (int line = 0; line < nb_lines; line++) {
+			//printf("line=%d ", line);
+			for (int col = 0; col < numprocs; col++) {
+				//printf("col= %d ", col);
+				temp = local_res_list[col][index];
+				//printf("temp=\n");
+				print_matrix(temp.mat);
+				tmp_data = Get_Lineno(temp.mat, line);
+				#pragma omp parallel for
+				for (int i = 0; i < temp.mat->width; i++) {
+					to_fill->data[count] = tmp_data[i];
+					count++;
+				}
+				free(tmp_data);
+			}
+		}
+	}
+}
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Matrix **sub_matrices_a = NULL,
@@ -217,12 +243,14 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Status status;
+	
 
 	/* Initialization */	
 	if (rank == 0) {	
 		//File_Reading(argc, argv, &fp, &input_matx);
-		a = new_Matrix_Crescendo(3, 3, 2);
-		b = new_Matrix_Crescendo(3, 3, 4);
+		input_matx = new_Matrix(4, 4);
+		a = new_Matrix_Crescendo(4, 4, 2);
+		b = new_Matrix_Crescendo(4, 4, 4);
 		Initialization_Local_Result_List(
 				&local_res_list, numprocs);
 	}
@@ -250,8 +278,11 @@ int main(int argc, char *argv[]) {
 
 	/* Finalizer */
 	if (rank == 0) {
+		Fill_Matrix_With_Results(input_matx, local_res_list,
+				numprocs);			
+		print_matrix(input_matx);
 		Destroy_All_Matrices(4, a, b, input_matx, res);
-		Destroy_Local_Result_List(local_res_list, numprocs);
+		Destroy_Local_Result_Matrix(local_res_list, numprocs);
 		if (fp) fclose(fp);
 	}
 	Destroy_All_Matrices(2, 
@@ -342,6 +373,15 @@ void Destroy_Local_Result_List(
 		for (int i = 0; i < len; i++) {
 			Destroy_Matrix(local_res_list[i]->mat);
 			free(local_res_list[i]);
+		}
+		free(local_res_list);
+	}
+}
+void Destroy_Local_Result_Matrix(
+		Local_Result **local_res_list, int len) {
+	if (local_res_list) {
+		for (int i = 0; i < len; i++) {
+			Destroy_Local_Result_Array(local_res_list[i], len);
 		}
 		free(local_res_list);
 	}
