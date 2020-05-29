@@ -149,10 +149,11 @@ void Gather_Local_Results(
 	Local_Result *temp;
 	switch(rank) {
 		case 0:
+			#pragma omp parallel for
 			for (int j = 0; j < numprocs; j++)
 				Fill_Local_Result_With(local_res_list[0] + j,
 						local_res + j);
-			for (int i = 1; i < numprocs; i++, (*round)++) {
+			for (int i = 1; i < numprocs; i++, (*round) += 0) {
 				for (int j = 0; j < numprocs; j++) {
 					//printf("rank 0 before:\n");
 					//print_local_result_list(
@@ -169,11 +170,11 @@ void Gather_Local_Results(
 			}
 			break;
 		default:
-			for (int i = 0; i < numprocs - 1; i++, (*round)++) {
+			for (int i = 0; i < numprocs - 1; i++, (*round)+=0) {
 				if (rank <= numprocs - 1 -i) {	
 					for (int j= 0; j < numprocs; j++) {
-						printf("rank %d sends:\n", rank);
-						print_local_result(local_res +j, rank);
+						//printf("rank %d sends:\n", rank);
+						//print_local_result(local_res +j, rank);
 						MPI_Send_Local_Result(local_res + j,
 								rank - 1, *round);
 					}
@@ -191,6 +192,8 @@ void Gather_Local_Results(
 	}
 }
 unsigned int* Get_Lineno(Matrix *m, int line) {
+	if (!m) puts("matrix is nulll!");
+	if (!m->data) puts("m->data is null!");
 	unsigned int* res = calloc(m->width, sizeof(unsigned int));
 	if (!res) {
 		fprintf(stderr, "Get_Lineno: calloc error\n");
@@ -206,28 +209,34 @@ void Fill_Matrix_With_Results(Matrix *to_fill,
 	Local_Result temp;
 	unsigned int *tmp_data;
 	int count = 0, nb_lines;
-
-	for (int index = 0; index < numprocs; index++) {
-		//printf("\nindex=%d ", index);
-		nb_lines = local_res_list[0][index].mat->height;
-		//printf(" nb_lines=%d ", nb_lines);
-		for (int line = 0; line < nb_lines; line++) {
-			//printf("line=%d ", line);
-			for (int col = 0; col < numprocs; col++) {
-				//printf("col= %d ", col);
-				temp = local_res_list[col][index];
-				//printf("temp=\n");
-				print_matrix(temp.mat);
-				tmp_data = Get_Lineno(temp.mat, line);
-				//#pragma omp parallel for
-				for (int i = 0; i < temp.mat->width; i++) {
-					to_fill->data[count] = tmp_data[i];
-					count++;
+	if (local_res_list)
+		for (int index = 0; index < numprocs; index++) {
+			//printf("\nindex=%d", index);
+			nb_lines = local_res_list[0][index].mat->height;
+			//printf("\tnb_lines=%d\n", nb_lines);
+			for (int line = 0; line < nb_lines; line++) {
+				//puts("here 1");
+				//printf("\tline=%d\n", line);
+				for (int col = 0; col < numprocs; col++) {
+					//printf("\tcol=%d\n", col);
+					temp = local_res_list[col][index];
+					//printf("temp=\n");
+					//puts("1>");
+					//printf("temp.mat->width=%d\n", temp.mat->width);
+					//printf("temp.mat->size=%d\n", temp.mat->size);
+					//print_matrix(temp.mat);
+					//puts("2>");
+					tmp_data = Get_Lineno(temp.mat, line);
+					//puts("3>");
+					for (int i = 0; i < temp.mat->width; i++) {
+						to_fill->data[count] = tmp_data[i];
+						count++;
+					}
+					free(tmp_data);
 				}
-				free(tmp_data);
+				//puts("here 2");
 			}
 		}
-	}
 }
 void Do_Multiply(
 		int rank, int numprocs, Matrix *a, Matrix *b,
@@ -251,14 +260,16 @@ void Do_Multiply(
 	(*round)++;
 	//printf("rank %d has B submatrix:\n", rank);
 	//print_matrix(local_b_submatrix);
-	puts("coucou 1");	
+	puts("speed");
 	Local_Computation_Each_Proc(numprocs, rank,
 		local_a_submatrix, *local_b_submatrix, *local_res, round);
 	//print_local_result_matrix(local_res_list, numprocs, rank);
-	puts("coucou 2");
+	puts("slooow?");
+	//MPI_Barrier(MPI_COMM_WORLD);
 	(*round)++;
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   *local_res, round);
+	puts("slow_bis ?");
 }
 int main(int argc, char *argv[]) {
     int rank, numprocs;
@@ -291,19 +302,19 @@ int main(int argc, char *argv[]) {
 	}
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
-	printf("times=%d\n", times);
 	while (times) {
 		Do_Multiply(rank, numprocs, w, input_matx,
 				&sub_matrices_a, &sub_matrices_b,
 				&len_submat_a, &len_submat_b, &local_a_submatrix,
 				&local_b_submatrix, local_res_list,
 				&local_res, &round);
-		puts("------------------------------------");
+		//puts("------------------------------------");
 		//print_local_result_matrix(local_res_list, numprocs, rank);
 		Fill_Matrix_With_Results(w, local_res_list,
 				numprocs);			
-		print_matrix(w);
-		printf("rank= %d\n", rank);
+		//printf("rank= %d\n", rank);
+		if (times == 1 && rank == 0)
+			print_matrix(w);
 		times--;
 	}
 
@@ -445,14 +456,17 @@ void print_local_result_list(Local_Result *local_res,
 		int len, int rank) {
 	if (local_res)
 		for (int i = 0; i < len; i++) {
+			//printf("ii=%d\n", i);
 			print_local_result(local_res + i, rank);
 		}
 }
 void print_local_result_matrix(Local_Result **local_res, 
 		int len, int rank) {
 	if (local_res)
-		for (int i = 0; i < len; i++)
+		for (int i = 0; i < len; i++) {
+			//printf("i=%d\n", i);
 			print_local_result_list(local_res[i], len, rank);
+		}
 }
 void print_raw_array(unsigned int *arr, int len) {
 	//printf("print_raw_array arr=%p len=%d\n", arr, len);
@@ -709,9 +723,9 @@ Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 		}
 	}
 	gettimeofday(&t1, 0);
-	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	//double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
 
-	printf("sequentialMultiply time:  %f\n", elapsed);
+	//printf("sequentialMultiply time:  %f\n", elapsed);
 	return res;
 }
 Matrix *sequentialMultiplyBySelf(Matrix *m) {
@@ -782,10 +796,10 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 		}
 	}
 	gettimeofday(&t1, 0);
-	double elapsed =
+	/*double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
-		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
-	printf("parallelMultiply time:  %f\n", elapsed);
+		(t1.tv_usec - t0.tv_usec) / 1000000.0f;*/
+	//printf("parallelMultiply time:  %f\n", elapsed);
 	free(convB);
 	return res;
 }
@@ -856,7 +870,7 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 	divider = cols_B / numprocs;
 	remain = cols_B % numprocs;
 	Matrix **matrix_list = NULL;
-	printf("remain=%d\n", remain);
+	//printf("remain=%d\n", remain);
 
 	matrix_list = calloc(numprocs, sizeof(Matrix*));
 	*len = numprocs;
@@ -872,8 +886,8 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 			//printf("b->height=%d divider=%d\n", B->height, divider);
 			matrix_list[i] = new_Matrix(B->height, divider);
 			fill_submatrix_bis(matrix_list[i], B, &offset);//TODO
-			print_raw_array(
-					matrix_list[i]->data, matrix_list[i]->size);
+			//print_raw_array(
+			//		matrix_list[i]->data, matrix_list[i]->size);
 		}
 	} else {
 		cols_remaining = B->width - divider * (numprocs - 1);
@@ -887,7 +901,6 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 	}
 	return matrix_list;
 }
-//TODO remove status parameter
 void Scatter_A_Lines(
 		int rank, int numprocs,
 		Matrix ***sub_matrices_a, int *len_submat_a,
@@ -927,8 +940,6 @@ void Scatter_B_Cols(
 	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
-			//*b = new_Matrix(5, 5);
-			//randomlyFillMatrix(*b);
 			puts("b:");
 			print_matrix(b);
 			*sub_matrices_b = Explode_B_Into_Columns(
@@ -1034,12 +1045,6 @@ void My_MPI_Send(Matrix *m, int recipient, int round) {
 	MPI_Send(m->data, m->size, MPI_INT, recipient,
 			round, MPI_COMM_WORLD);
 }
-/*
-void MPI_Recv_Local_Result_List(int rank, int numprocs,
-		Local_Result ***local_res_list, int sender, int round) {
-	Local_Result *temp;
-	MPI_Recv_Local_Result(temp, sender, round);
-}*/
 void MPI_Recv_Local_Result(Local_Result **local_res, int sender,
 		int round) {
 	unsigned int index[1];
@@ -1103,12 +1108,15 @@ void Make_Local_A_Submatrices_Circulate(
 			if (rank == 0) sender = numprocs - 1;
 			My_MPI_Send(*local_a_submatrix,
 					(rank + 1) % numprocs, round);
+			//puts("1");
 			My_MPI_Recv(local_a_submatrix, sender, round);
 			break;	
 		default:
 			save = matrixcpy(*local_a_submatrix);
 			My_MPI_Recv(local_a_submatrix, sender, round);
+			//printf("2> rank=%d\n", rank);
 			My_MPI_Send(save, (rank + 1) % numprocs, round);
+			//printf("3> rank=%d\n", rank);
 			break;
 	}
 }
@@ -1134,7 +1142,7 @@ void Local_Computation_Each_Proc(
 		int numprocs, int rank, Matrix **local_a_submatrix,
 		Matrix *local_b_submatrix, Local_Result *local_res,
 		int *round) {
-	for (int i = 0; i < numprocs; i++, (*round)++) {
+	for (int i = 0; i < numprocs; i++) {
 		Do_Local_Computation(rank, numprocs, *local_a_submatrix,
 				local_b_submatrix, local_res, i);
 		Make_Local_A_Submatrices_Circulate(
@@ -1148,7 +1156,6 @@ void Initialization_Local_Result(
 		fprintf(stderr, "local_res: calloc error\n");
 		exit(13);
 	}
-	//puts("ending init Local_Result");
 }
 /* .-----------. 
  * |   TESTS   |
