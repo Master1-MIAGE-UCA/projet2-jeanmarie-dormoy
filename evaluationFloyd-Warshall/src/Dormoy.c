@@ -153,8 +153,12 @@ void Gather_Local_Results(
 	Local_Result *temp;
 	switch(rank) {
 		case 0:
+			for (int j = 0; j < numprocs; j++) {
+				Fill_Local_Result_With(local_res_list[0] + j,
+						local_res + j);
+			}
 			//numprocs - 2
-			for (int i = 0; i < 1; i++) {
+			for (int i = 1; i < numprocs; i++, round++) {
 				/*
 				MPI_Recv_Local_Result_List(rank, numprocs,
 						local_res_list, (rank + 1) %numprocs,
@@ -162,21 +166,21 @@ void Gather_Local_Results(
 				for (int j = 0; j < numprocs; j++) {
 					printf("rank 0 before:\n");
 					print_local_result_list(
-							local_res_list[0], numprocs, rank);
+							local_res_list[i], numprocs, rank);
 					MPI_Recv_Local_Result(&temp, 1, round);
 					//print_local_result(temp, rank);
 					//local_res_list[0 * numprocs +j] = temp;
 					Fill_Local_Result_With(
-							local_res_list[0] + j, temp);
+							local_res_list[i] + temp->index, temp);
 					printf("rank 0 after:\n");
 					print_local_result_list(
-							local_res_list[0], numprocs, rank);
+							local_res_list[i], numprocs, rank);
 					free(temp);
 				}
 			}
 			break;
 		default:
-			for (int i = 0; i < 1; i++, round++) {
+			for (int i = 0; i < numprocs - 1; i++, round++) {
 				if (rank <= numprocs - 1 -i) {	
 					for (int j= 0; j < numprocs; j++) {
 						printf("rank %d sends:\n", rank);
@@ -184,6 +188,14 @@ void Gather_Local_Results(
 						MPI_Send_Local_Result(local_res + j,
 								rank - 1, round);
 					}
+				}
+				if (rank < numprocs - 1 -i) {
+					for (int j =0; j < numprocs; j++) {
+						MPI_Recv_Local_Result(&temp, rank +1, round);
+						Fill_Local_Result_With(local_res + j,
+							temp);	
+						free(temp);
+					}	
 				}
 			}
 			break;
@@ -209,8 +221,8 @@ int main(int argc, char *argv[]) {
 	/* Initialization */	
 	if (rank == 0) {	
 		//File_Reading(argc, argv, &fp, &input_matx);
-		a = new_Matrix_Crescendo(2, 2, 2);
-		b = new_Matrix_Crescendo(2, 2, 4);
+		a = new_Matrix_Crescendo(3, 3, 2);
+		b = new_Matrix_Crescendo(3, 3, 4);
 		Initialization_Local_Result_List(
 				&local_res_list, numprocs);
 	}
@@ -219,13 +231,13 @@ int main(int argc, char *argv[]) {
 
 	Scatter_A_Lines(rank, numprocs, &sub_matrices_a, 
 			&len_submat_a, a, &local_a_submatrix, 0);
-	printf("rank %d has A submatrix:\n", rank);
-	print_matrix(local_a_submatrix);
+	//printf("rank %d has A submatrix:\n", rank);
+	//print_matrix(local_a_submatrix);
 
 	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
 			&len_submat_b, b, &local_b_submatrix, 1);
-	printf("rank %d has B submatrix:\n", rank);
-	print_matrix(local_b_submatrix);
+	//printf("rank %d has B submatrix:\n", rank);
+	//print_matrix(local_b_submatrix);
 	
 	Local_Computation_Each_Proc(numprocs, rank,
 		&local_a_submatrix, local_b_submatrix, local_res, 2);
@@ -367,16 +379,12 @@ void print_local_result_list(Local_Result *local_res,
 		for (int i = 0; i < len; i++) {
 			print_local_result(local_res + i, rank);
 		}
-	else
-		puts("local_res LIST NULL!");
 }
 void print_local_result_matrix(Local_Result **local_res, 
 		int len, int rank) {
 	if (local_res)
 		for (int i = 0; i < len; i++)
 			print_local_result_list(local_res[i], len, rank);
-	else
-		puts("local_res MATRIX NULL!");
 }
 void print_raw_array(unsigned int *arr, int len) {
 	//printf("print_raw_array arr=%p len=%d\n", arr, len);
@@ -460,6 +468,7 @@ void Fill_Local_Result_With(Local_Result *allocated,
 		puts("allocated is NULL");
 	else {
 		allocated->index = src->index;
+		if (allocated->mat) Destroy_Matrix(allocated->mat);
 		allocated->mat = matrixcpy(src->mat);
 	}
 
@@ -823,6 +832,7 @@ void Scatter_A_Lines(
 	switch(rank) {
 		case 0:	
 			//printf("a: %p\n", (void*) a);
+			puts("a:");
 			print_matrix(a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
