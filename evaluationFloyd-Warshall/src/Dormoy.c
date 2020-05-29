@@ -92,7 +92,7 @@ void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset);
 Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len);
 Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 void Scatter_A_Lines(
-		int rank, int numprocs, MPI_Status status,
+		int rank, int numprocs,
 		Matrix ***sub_matrices_a, int *len_submat_a,
 		Matrix *a, Matrix **local_a_submatrix, int round);
 void Scatter_B_Cols(
@@ -129,19 +129,21 @@ void Initialization_Local_Result_List(
 		exit(14);
 	}
 	for (int i = 0; i < numprocs; i++) {
-		temp = calloc(1, sizeof(Local_Result));
+		temp = calloc(numprocs, sizeof(Local_Result));
 		if (!temp) {
 			fprintf(stderr, 
 					"local_res_list[%d]: calloc error\n", i);
 			exit(15);
 		}
+		temp->mat = NULL;
+		/*
 		temp->mat = calloc(1, sizeof(Matrix));
 		if (!temp->mat) {
 			fprintf(stderr, 
 					"temp->mat local_res_list[%d]: \
 					calloc error\n", i);
 			exit(16);
-		}
+		}*/
 		(*local_res_list)[i] = temp;
 	}
 }
@@ -213,16 +215,13 @@ int main(int argc, char *argv[]) {
 				&local_res_list, numprocs);
 	}
 	Initialization_Local_Result(&local_res, numprocs);
-	if (!local_res_list) 
-		printf("rank %dlocal_res_list NULL NULL!\n", rank);
+	//print_local_result_matrix(local_res_list, numprocs, rank);
 
-	print_local_result_matrix(local_res_list, numprocs, rank);
-	puts("coucou");
-	puts("1111111");
-	Scatter_A_Lines(rank, numprocs, status, &sub_matrices_a, 
+	Scatter_A_Lines(rank, numprocs, &sub_matrices_a, 
 			&len_submat_a, a, &local_a_submatrix, 0);
 	printf("rank %d has A submatrix:\n", rank);
 	print_matrix(local_a_submatrix);
+
 	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
 			&len_submat_b, b, &local_b_submatrix, 1);
 	printf("rank %d has B submatrix:\n", rank);
@@ -230,10 +229,12 @@ int main(int argc, char *argv[]) {
 	
 	Local_Computation_Each_Proc(numprocs, rank,
 		&local_a_submatrix, local_b_submatrix, local_res, 2);
-	print_local_result_matrix(local_res_list, numprocs, rank);
+	//print_local_result_matrix(local_res_list, numprocs, rank);
 
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   local_res, 3);
+	puts("------------------------------------");
+	print_local_result_matrix(local_res_list, numprocs, rank);
 
 	/* Finalizer */
 	if (rank == 0) {
@@ -458,11 +459,8 @@ void Fill_Local_Result_With(Local_Result *allocated,
 	if (allocated == NULL)
 		puts("allocated is NULL");
 	else {
-		puts("1");
 		allocated->index = src->index;
-		puts("2");
-		matrixcpy_bis(allocated->mat, src->mat);
-		puts("3");
+		allocated->mat = matrixcpy(src->mat);
 	}
 
 }
@@ -814,16 +812,18 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 }
 //TODO remove status parameter
 void Scatter_A_Lines(
-		int rank, int numprocs, MPI_Status status,
+		int rank, int numprocs,
 		Matrix ***sub_matrices_a, int *len_submat_a,
 		Matrix *a, Matrix **local_a_submatrix, int round) {
 	Matrix *ptr_m;
-	*local_a_submatrix = NULL;	
+	//puts("begin scatter A Lines");
+	//printf("rank %d local_a_submatrix: %p\n", rank,
+	//		(void*) local_a_submatrix);
+	*local_a_submatrix = NULL;//ERROR here	
 	switch(rank) {
 		case 0:	
-			puts("a:");
+			//printf("a: %p\n", (void*) a);
 			print_matrix(a);
-			puts("1AA1111");
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
 			for (int i = numprocs - 1; i > 0; i--) {
