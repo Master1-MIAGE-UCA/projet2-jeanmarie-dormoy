@@ -29,6 +29,8 @@ typedef struct Local_Result {
 Matrix *new_Matrix(int height, int width);
 Matrix *new_Matrix_Crescendo(int height, int width, int base);
 Matrix *build_matrix(FILE *fp);
+Local_Result *new_Local_Result_Default();
+Local_Result *new_Local_Result(int index, Matrix *m);
 /* Destructors  */
 void Destroy_Matrix(Matrix *m);
 void Destroy_All_Matrices(int num, ...);
@@ -44,6 +46,8 @@ void print_matrix(Matrix *m);
 void print_local_result(Local_Result *local_res, int rank);
 void print_local_result_list(
 		Local_Result *local_res, int len, int rank);
+void print_local_result_matrix(Local_Result **local_res, 
+		int len, int rank);
 /* Scatter Debug			*/
 void print_matrix_list(Matrix **m, int len);
 void print_matrix_list_bis(Matrix **m, int len);
@@ -56,12 +60,19 @@ unsigned int* unsigned_int_cpy(unsigned int *dest, unsigned int *src,
 Matrix *matrixcpy(Matrix *src);
 Matrix *matrixcpy_bis(Matrix *dest, Matrix *src);
 Matrix *matrixcpy_reverseIndex(Matrix *src);
+void Fill_Local_Result_With(Local_Result *allocated,
+		Local_Result *src);
+Local_Result *Local_Result_cpy(Local_Result *src);
 
 /* IPC Communication					*/
 void My_MPI_Send(Matrix *m, int recipient, int round);
 void My_MPI_Recv(Matrix **local_a_submatrix, int sender, int round);
 void Transmit_SubMatrix(int iter, int numprocs, 
 		int rank, Matrix **local_submatrix, int round);
+void MPI_Recv_Local_Result(Local_Result **local_res, int sender,
+		int round);
+void MPI_Send_Local_Result(Local_Result *local_res,
+		int recipient, int round);
 
 /* File Reading							*/
 int first_pass(char *s);
@@ -124,12 +135,57 @@ void Initialization_Local_Result_List(
 					"local_res_list[%d]: calloc error\n", i);
 			exit(15);
 		}
+		temp->mat = calloc(1, sizeof(Matrix));
+		if (!temp->mat) {
+			fprintf(stderr, 
+					"temp->mat local_res_list[%d]: \
+					calloc error\n", i);
+			exit(16);
+		}
 		(*local_res_list)[i] = temp;
 	}
 }
 void Gather_Local_Results(
-		int rank, int numprocs) {
-
+		int rank, int numprocs, Local_Result **local_res_list,
+		Local_Result *local_res, int round) {
+	Local_Result *temp;
+	switch(rank) {
+		case 0:
+			//numprocs - 2
+			for (int i = 0; i < 1; i++) {
+				/*
+				MPI_Recv_Local_Result_List(rank, numprocs,
+						local_res_list, (rank + 1) %numprocs,
+						round);*/
+				for (int j = 0; j < numprocs; j++) {
+					printf("rank 0 before:\n");
+					print_local_result_list(
+							local_res_list[0], numprocs, rank);
+					MPI_Recv_Local_Result(&temp, 1, round);
+					//print_local_result(temp, rank);
+					//local_res_list[0 * numprocs +j] = temp;
+					Fill_Local_Result_With(
+							local_res_list[0] + j, temp);
+					printf("rank 0 after:\n");
+					print_local_result_list(
+							local_res_list[0], numprocs, rank);
+					free(temp);
+				}
+			}
+			break;
+		default:
+			for (int i = 0; i < 1; i++, round++) {
+				if (rank <= numprocs - 1 -i) {	
+					for (int j= 0; j < numprocs; j++) {
+						printf("rank %d sends:\n", rank);
+						print_local_result(local_res +j, rank);
+						MPI_Send_Local_Result(local_res + j,
+								rank - 1, round);
+					}
+				}
+			}
+			break;
+	}
 }
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
@@ -151,25 +207,34 @@ int main(int argc, char *argv[]) {
 	/* Initialization */	
 	if (rank == 0) {	
 		//File_Reading(argc, argv, &fp, &input_matx);
-		a = new_Matrix_Crescendo(7, 7, 2);
-		b = new_Matrix_Crescendo(7, 7, 4);
+		a = new_Matrix_Crescendo(2, 2, 2);
+		b = new_Matrix_Crescendo(2, 2, 4);
 		Initialization_Local_Result_List(
 				&local_res_list, numprocs);
 	}
 	Initialization_Local_Result(&local_res, numprocs);
+	if (!local_res_list) 
+		printf("rank %dlocal_res_list NULL NULL!\n", rank);
 
+	print_local_result_matrix(local_res_list, numprocs, rank);
+	puts("coucou");
+	puts("1111111");
 	Scatter_A_Lines(rank, numprocs, status, &sub_matrices_a, 
 			&len_submat_a, a, &local_a_submatrix, 0);
 	printf("rank %d has A submatrix:\n", rank);
 	print_matrix(local_a_submatrix);
 	Scatter_B_Cols(rank, numprocs, status, &sub_matrices_b, 
 			&len_submat_b, b, &local_b_submatrix, 1);
-	//printf("rank %d has B submatrix:\n", rank);
-	//print_matrix(local_b_submatrix);
+	printf("rank %d has B submatrix:\n", rank);
+	print_matrix(local_b_submatrix);
 	
-	//Local_Computation_Each_Proc(numprocs, rank,
-	//	&local_a_submatrix, local_b_submatrix, local_res, 2);
-	//print_local_result_list(local_res, numprocs, rank);
+	Local_Computation_Each_Proc(numprocs, rank,
+		&local_a_submatrix, local_b_submatrix, local_res, 2);
+	print_local_result_matrix(local_res_list, numprocs, rank);
+
+	Gather_Local_Results(rank, numprocs, local_res_list,
+		   local_res, 3);
+
 	/* Finalizer */
 	if (rank == 0) {
 		Destroy_All_Matrices(4, a, b, input_matx, res);
@@ -212,7 +277,26 @@ Matrix *new_Matrix_Crescendo(int height, int width, int base) {
 		res->data[i] = base;
 	return res;
 }
-
+Local_Result *new_Local_Result_Default() {
+	Local_Result *res = calloc(1, sizeof(Local_Result));
+	if (!res) {
+		fprintf(stderr,
+				"new_Local_Result: Local_Result calloc error\n");
+		exit(15);
+	}
+	return res;
+}
+Local_Result *new_Local_Result(int index, Matrix *m) {
+	Local_Result *res = calloc(1, sizeof(Local_Result));
+	if (!res) {
+		fprintf(stderr,
+				"new_Local_Result: Local_Result calloc error\n");
+		exit(15);
+	}
+	res->index = index;
+	res->mat = matrixcpy(m);
+	return res;
+}
 /* .---------------. 
  * |   DESTRUCTOR  |
  * .---------------.
@@ -243,6 +327,7 @@ void Destroy_Local_Result_List(
 		Local_Result **local_res_list, int len) {
 	if (local_res_list) {
 		for (int i = 0; i < len; i++) {
+			Destroy_Matrix(local_res_list[i]->mat);
 			free(local_res_list[i]);
 		}
 		free(local_res_list);
@@ -277,9 +362,20 @@ void print_local_result(Local_Result *local_res, int rank) {
 }
 void print_local_result_list(Local_Result *local_res,
 		int len, int rank) {
-	for (int i = 0; i < len; i++) {
-		print_local_result(local_res + i, rank);
-	}
+	if (local_res)
+		for (int i = 0; i < len; i++) {
+			print_local_result(local_res + i, rank);
+		}
+	else
+		puts("local_res LIST NULL!");
+}
+void print_local_result_matrix(Local_Result **local_res, 
+		int len, int rank) {
+	if (local_res)
+		for (int i = 0; i < len; i++)
+			print_local_result_list(local_res[i], len, rank);
+	else
+		puts("local_res MATRIX NULL!");
 }
 void print_raw_array(unsigned int *arr, int len) {
 	//printf("print_raw_array arr=%p len=%d\n", arr, len);
@@ -349,6 +445,27 @@ void print_matrix(Matrix *m) {
  * |  MATRIX FILLING & COPYING  |
  * .----------------------------.
  */
+Local_Result *Local_Result_cpy(Local_Result *src) {
+	if (!src || !src->mat || !src->mat->data)
+		return NULL;
+	Local_Result *dest = new_Local_Result(src->index, src->mat);
+	return dest;
+}
+void Fill_Local_Result_With(Local_Result *allocated,
+		Local_Result *src) {
+	if (!src || !src->mat || !src->mat->data)
+		return;
+	if (allocated == NULL)
+		puts("allocated is NULL");
+	else {
+		puts("1");
+		allocated->index = src->index;
+		puts("2");
+		matrixcpy_bis(allocated->mat, src->mat);
+		puts("3");
+	}
+
+}
 void randomlyFillMatrix(Matrix *m){
 	//Random seed
 	srandom(time(0)+clock()+random());
@@ -374,8 +491,12 @@ Matrix *matrixcpy(Matrix *src) {
 	return dest;
 }
 Matrix *matrixcpy_bis(Matrix *dest, Matrix *src) {
-	if (!src || !src->data)
+	if (!dest) puts("NULL dest!");
+	if (!src || !src->data || !dest || !dest->data)
 		return NULL;
+	dest->size = src->size;
+	dest->width = src->width;
+	dest->height = src->height;
 	#pragma omp parallel for
 	for(int i=0; i < src->size; i++)
 		dest->data[i] = src->data[i];
@@ -702,6 +823,7 @@ void Scatter_A_Lines(
 		case 0:	
 			puts("a:");
 			print_matrix(a);
+			puts("1AA1111");
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
 			for (int i = numprocs - 1; i > 0; i--) {
@@ -794,6 +916,13 @@ void Transmit_SubMatrix(
 	}
 	free(buffer);
 }
+void MPI_Send_Local_Result(Local_Result *local_res,
+		int recipient, int round) {
+	unsigned int index[1];
+	index[0] = local_res->index;
+	MPI_Send(index, 1, MPI_INT, recipient, round, MPI_COMM_WORLD);
+	My_MPI_Send(local_res->mat, recipient, round);
+}
 void My_MPI_Send(Matrix *m, int recipient, int round) {
 	unsigned int dimensions[2];
 	dimensions[0] = m->height;
@@ -802,6 +931,29 @@ void My_MPI_Send(Matrix *m, int recipient, int round) {
 			round, MPI_COMM_WORLD);
 	MPI_Send(m->data, m->size, MPI_INT, recipient,
 			round, MPI_COMM_WORLD);
+}
+/*
+void MPI_Recv_Local_Result_List(int rank, int numprocs,
+		Local_Result ***local_res_list, int sender, int round) {
+	Local_Result *temp;
+	MPI_Recv_Local_Result(temp, sender, round);
+}*/
+void MPI_Recv_Local_Result(Local_Result **local_res, int sender,
+		int round) {
+	unsigned int index[1];
+	MPI_Status status;
+	int size_msg;
+	Local_Result *received = new_Local_Result_Default();
+
+	MPI_Probe(sender, round, MPI_COMM_WORLD, &status);
+	MPI_Get_count(&status, MPI_INT, &size_msg);
+	if (size_msg == 1) {
+		MPI_Recv(index, 1, MPI_INT, sender, round, MPI_COMM_WORLD,
+				MPI_STATUS_IGNORE);
+		received->index = index[0];
+		My_MPI_Recv(&(received->mat), sender, round);
+		*local_res = received;
+	}
 }
 void My_MPI_Recv(Matrix **local_a_submatrix, int sender, int round) {
 	unsigned int dimensions[2];
