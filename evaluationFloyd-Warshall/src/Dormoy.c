@@ -292,6 +292,8 @@ int main(int argc, char *argv[]) {
 	Matrix *input_matx = NULL, *res = NULL;
     unsigned int times;
 	int round = 0;
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
 	MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -335,6 +337,12 @@ int main(int argc, char *argv[]) {
 	Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
 	Destroy_Local_Result_Array(local_res, numprocs);
 	MPI_Finalize();
+	
+	gettimeofday(&t1, 0);
+	double elapsed =
+		(t1.tv_sec-t0.tv_sec) * 1.0f + 
+		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	printf("Dormoy time:  %f\n", elapsed);
 	return 0;
 }
 

@@ -2,11 +2,14 @@ CC=mpicc
 EXEC=mpirun
 #CFLAGS=-Wall -fopenmp -lm -g
 CFLAGS=-std=c99 -lm -fopenmp
-run: Dormoy
+SRC=src/Dormoy.c
+EXE=bin/Dormoy
+run: src/Dormoy
 	./run.sh $(np)
 
-re: clean Dormoy
-Dormoy: Dormoy.c
+re: clean $(EXE)
+
+$(EXE): $(SRC)
 	$(CC) $(CFLAGS) -o $@ $^
 
 mycode_mpi: mycode_mpi.c
@@ -18,4 +21,4 @@ del_logs:
 	rm -rf logs/*
 
 clean:
-	rm -rf *~ mycode_mpi Dormoy
+	rm -rf *~ $(EXE)
