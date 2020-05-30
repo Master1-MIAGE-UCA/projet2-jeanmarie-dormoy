@@ -58,7 +58,6 @@ void print_matrix_list_bis(Matrix **m, int len);
 void print_raw_matrix_list(Matrix **m, int len);
 
 /* Matrix filling & copying				*/
-void randomlyFillMatrix(Matrix *m);
 unsigned int* unsigned_int_cpy(unsigned int *dest, unsigned int *src,
 		int len);
 Matrix *matrixcpy(Matrix *src);
@@ -595,14 +594,6 @@ void Fill_Local_Result_With(Local_Result *allocated,
 	}
 
 }
-void randomlyFillMatrix(Matrix *m){
-	//Random seed
-	srandom(time(0)+clock()+random());
-	#pragma omp parallel for
-	for(int i=0; i < m->size; i++){
-			m->data[i] = rand() % 200 + 1;
-	}
-}
 unsigned int* unsigned_int_cpy(
 		unsigned int *dest, unsigned int *src, int len) {
 	#pragma omp parallel for
@@ -678,7 +669,7 @@ Matrix *build_matrix(FILE *fp) {
 	int n = 0, index = 0;
 	char *line = NULL, *save;
     size_t len = 0;
-   	ssize_t read;
+   	size_t read;
 	if (!res) {
 		fprintf(stderr, "build_matrix: res malloc error\n");
 		exit(3);
@@ -693,7 +684,7 @@ Matrix *build_matrix(FILE *fp) {
 		fprintf(stderr, "build_matrix: save calloc error\n");
 		exit(5);
 	}
-	if ((read = getline(&line, &len, fp)) != -1) {
+	if ((fgets(line, LINE_SIZE, fp)) != NULL) {
 		strcpy(save, line);
 		n = first_pass(save);
 	}
@@ -710,9 +701,10 @@ Matrix *build_matrix(FILE *fp) {
 		fprintf(stderr, "build_matrix: res->data malloc error\n");
 		exit(5);
 	}
-	while (read != -1) {
+	rewind(fp);
+	while ((fgets(line, LINE_SIZE, fp)) != NULL) {
 		fill_matrix_with_line(res->data, &index, line);
-		read = getline(&line, &len, fp);
+		//read = getline(&line, &len, fp);
 	}
 	if (line) free(line);
 	if (save) free(save);
