@@ -1,6 +1,7 @@
 #include <omp.h>
 #include <mpi.h>
 #include <limits.h>
+#include <math.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -271,6 +272,9 @@ void Do_Multiply(
 		   *local_res, round);
 	(*round)++;
 	//puts("slow_bis ?");
+} 
+int log2_int(int z) {
+	return floor(log2((double) z));
 }
 int main(int argc, char *argv[]) {
     int rank, numprocs;
@@ -295,7 +299,7 @@ int main(int argc, char *argv[]) {
 	/* Processus 0 Initialization */	
 	if (rank == 0) {	
 		File_Reading(argc, argv, &fp, &input_matx);
-		times = input_matx->height;
+		times = log2_int(input_matx->height);
 		Transform_A_Into_W(input_matx);
 		w = matrixcpy(input_matx);
 		Initialization_Local_Result_List(
@@ -304,7 +308,7 @@ int main(int argc, char *argv[]) {
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
 	while (times) {
-		Do_Multiply(rank, numprocs, w, input_matx,
+		Do_Multiply(rank, numprocs, w, w,
 				&sub_matrices_a, &sub_matrices_b,
 				&len_submat_a, &len_submat_b, &local_a_submatrix,
 				&local_b_submatrix, local_res_list,

@@ -13,7 +13,7 @@ srcFolder="src/"
 #np = 3
 np =4
 datasets=[2,3]
-
+#for dataset 4, minimum timeout timeout required is 8s
 
 def check_output(resultFile, output) :
     resultat=""
@@ -33,7 +33,7 @@ def check_output(resultFile, output) :
 def runDataset(name, i) :
     output=""
     try:
-        timeout=20
+        timeout=8
         if (i>5) :
             timeout=60
         binFile=binFolder+name
