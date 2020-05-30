@@ -33,7 +33,7 @@ def check_output(resultFile, output) :
 def runDataset(name, i) :
     output=""
     try:
-        timeout=8
+        timeout=9
         if (i>5) :
             timeout=60
         binFile=binFolder+name

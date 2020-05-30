@@ -1,7 +1,7 @@
 CC=mpicc
 EXEC=mpirun
 #CFLAGS=-Wall -fopenmp -lm -g
-CFLAGS=-std=c99 -lm -fopenmp
+CFLAGS=-std=c99 -lm -fopenmp -Wall
 SRC=src/Dormoy.c
 EXE=bin/Dormoy
 run: src/Dormoy

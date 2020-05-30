@@ -265,7 +265,7 @@ void Do_Multiply(
 	//puts("speed");
 	Local_Computation_Each_Proc(numprocs, rank,
 		local_a_submatrix, *local_b_submatrix, *local_res, *round);
-	(*round)++;
+	(*round)++; 
 	//puts("slooow?");
 	
 	Gather_Local_Results(rank, numprocs, local_res_list,
@@ -309,7 +309,9 @@ int main(int argc, char *argv[]) {
 	}
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
+	//times = 1;
 	while (times) {
+		//puts("went here");
 		Do_Multiply(rank, numprocs, w, w,
 				&sub_matrices_a, &sub_matrices_b,
 				&len_submat_a, &len_submat_b, &local_a_submatrix,
@@ -318,7 +320,7 @@ int main(int argc, char *argv[]) {
 		//puts("------------------------------------");
 		//print_local_result_matrix(local_res_list, numprocs, rank);
 		Fill_Matrix_With_Results(w, local_res_list,
-				numprocs);			
+				numprocs);		
 		//printf("rank= %d\n", rank);
 		if (times == 1 && rank == 0)
 			outputMatrix(w);
@@ -342,7 +344,7 @@ int main(int argc, char *argv[]) {
 	double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
 		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
-	printf("Dormoy time:  %f\n", elapsed);
+	//printf("Dormoy time:  %f\n", elapsed);
 	return 0;
 }
 
@@ -680,8 +682,6 @@ Matrix *build_matrix(FILE *fp) {
 	Matrix *res = malloc(sizeof(Matrix));
 	int n = 0, index = 0;
 	char *line = NULL, *save;
-    size_t len = 0;
-   	size_t read;
 	if (!res) {
 		fprintf(stderr, "build_matrix: res malloc error\n");
 		exit(3);
@@ -876,73 +876,52 @@ void fill_submatrix_bis(Matrix *m, Matrix *B, int *offset_col) {
 		}
 	*offset_col += m->width;
 }
-Matrix** Explode_A_Into_Lines(Matrix *A, int numprocs, int *len){ 
-	int lines_A, remain, lines_remaining, divider, offset = 0;
-	lines_A	= A->height;
-	divider = lines_A / numprocs;
-	remain = lines_A % numprocs;
+unsigned int* Compute_Distribution(int lines, const int numprocs) {
+    int divider = lines / numprocs;
+    int remainder = lines % numprocs;
+    unsigned int *res = calloc(numprocs, sizeof(unsigned int));
+	if (!res) {
+		fprintf(stderr,
+				"res: calloc errror Compute_Distribution");
+		exit(17);
+	}
+    for (int i = 0; i < numprocs; i++) {
+        res[i] = divider;
+        if (remainder-- > 0) {
+         res[i]++;
+        }
+    }
+    return res;
+}
+Matrix** Explode_A_Into_Lines(
+		Matrix *A, const int numprocs, int *len){ 
+	int offset = 0;
+	unsigned int *dimensions;
 	Matrix **matrix_list = NULL;
 
+	dimensions = Compute_Distribution(A->height, numprocs);
 	matrix_list = calloc(numprocs, sizeof(Matrix*));
 	*len = numprocs;
-	if (remain == 0) {
-		//we have divider sub matrices
-		if (!matrix_list) {
-			fprintf(stderr,
-					"Explode_A_Into_Lines: matrix_list calloc error");
-			exit(9);
-		}
-		for (int i = 0; i < numprocs; i++) {
-			matrix_list[i] = new_Matrix(divider, A->width);
-			fill_submatrix(matrix_list[i], A, &offset);
-		}
-	} else {
-		lines_remaining = A->height - divider * (numprocs - 1);
-		for (int i = 0; i <	numprocs - 1; i++) {
-			matrix_list[i] = new_Matrix(divider, A->width);	
-			fill_submatrix(matrix_list[i], A, &offset);
-		}		
-		matrix_list[numprocs - 1] = new_Matrix(
-				lines_remaining, A->width);
-		fill_submatrix(matrix_list[numprocs - 1], A, &offset);
+	for (int i = 0; i < numprocs; i++) {
+		matrix_list[i] = new_Matrix(dimensions[i], A->width);
+		fill_submatrix(matrix_list[i], A, &offset);
 	}
+	free(dimensions);
 	return matrix_list;
 }
 Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){ 
-	int cols_B, remain, cols_remaining, divider, offset = 0;
-	cols_B	= B->width;
-	divider = cols_B / numprocs;
-	remain = cols_B % numprocs;
+	int offset = 0;
+	unsigned int *dimensions;
 	Matrix **matrix_list = NULL;
-	//printf("remain=%d\n", remain);
 
+	dimensions = Compute_Distribution(B->width, numprocs);
 	matrix_list = calloc(numprocs, sizeof(Matrix*));
 	*len = numprocs;
-	if (remain == 0) {
-		//we have divider sub matrices
-		if (!matrix_list) {
-			fprintf(stderr,
-					"Explode_B_Into_Columns: matrix_list \
-					calloc error");
-			exit(9);
-		}
-		for (int i = 0; i < numprocs; i++) {
-			//printf("b->height=%d divider=%d\n", B->height, divider);
-			matrix_list[i] = new_Matrix(B->height, divider);
-			fill_submatrix_bis(matrix_list[i], B, &offset);//TODO
-			//print_raw_array(
-			//		matrix_list[i]->data, matrix_list[i]->size);
-		}
-	} else {
-		cols_remaining = B->width - divider * (numprocs - 1);
-		for (int i = 0; i <	numprocs - 1; i++) {
-			matrix_list[i] = new_Matrix(B->height, divider);	
-			fill_submatrix_bis(matrix_list[i], B, &offset);
-		}		
-		matrix_list[numprocs - 1] = new_Matrix(
-				B->height, cols_remaining);
-		fill_submatrix_bis(matrix_list[numprocs - 1], B, &offset);
+	for (int i = 0; i < numprocs; i++) {
+		matrix_list[i] = new_Matrix(B->height, dimensions[i]);
+		fill_submatrix_bis(matrix_list[i], B, &offset);
 	}
+	free(dimensions);
 	return matrix_list;
 }
 void Scatter_A_Lines(
@@ -957,6 +936,10 @@ void Scatter_A_Lines(
 			//print_matrix(a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
+			/*
+			puts("-----------------------");
+			print_matrix_list(*sub_matrices_a, numprocs);*/
+			
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_a)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
@@ -984,6 +967,8 @@ void Scatter_B_Cols(
 			//print_matrix(b);
 			*sub_matrices_b = Explode_B_Into_Columns(
 					b, numprocs, len_submat_b);
+			/*puts("-----------------------");
+			print_matrix_list(*sub_matrices_b, numprocs);*/
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_b)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
