@@ -45,6 +45,8 @@ void Destroy_Local_Result_Matrix(
 void print_raw_array(unsigned int *arr, int len);
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
+void print_formatted_matrix(Matrix *m);
+void outputMatrix(Matrix *m);
 void print_local_result(Local_Result *local_res, int rank);
 void print_local_result_list(
 		Local_Result *local_res, int len, int rank);
@@ -98,7 +100,7 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
 void Scatter_A_Lines(
 		int rank, int numprocs,
 		Matrix ***sub_matrices_a, int *len_submat_a,
-		Matrix *a, Matrix **local_a_submatrix, int *round);
+		Matrix *a, Matrix **local_a_submatrix, int round);
 void Scatter_B_Cols(
 		int rank, int numprocs, Matrix ***sub_matrices_b,
 		int *len_submat_b, Matrix *b, Matrix **local_b_submatrix,
@@ -119,7 +121,7 @@ void Do_Local_Computation(int rank, int numprocs,
 void Local_Computation_Each_Proc(
 		int numprocs, int rank, Matrix **local_a_submatrix,
 		Matrix *local_b_submatrix, Local_Result *local_res,
-		int *round);
+		int round);
 
 /* Tests								*/
 int Test_Equals(Matrix *a, Matrix *b);
@@ -147,14 +149,17 @@ void Gather_Local_Results(
 		int rank, int numprocs, Local_Result **local_res_list,
 		Local_Result *local_res, int *round) {
 	Local_Result *temp;
+	int i, j;
 	switch(rank) {
 		case 0:
-			#pragma omp parallel for
-			for (int j = 0; j < numprocs; j++)
+			#pragma omp parallel for private(j)
+			for (j = 0; j < numprocs; j++)
 				Fill_Local_Result_With(local_res_list[0] + j,
-						local_res + j);
-			for (int i = 1; i < numprocs; i++, (*round) += 0) {
-				for (int j = 0; j < numprocs; j++) {
+						local_res + j);	
+			for (i = 1; i < numprocs; i++) {
+				//#pragma omp parallel for firstprivate(i, _round)
+				//private(j, temp) shared(local_res, local_res_list)
+				for (j = 0; j < numprocs; j++) {
 					//printf("rank 0 before:\n");
 					//print_local_result_list(
 					//		local_res_list[i], numprocs, rank);
@@ -170,9 +175,9 @@ void Gather_Local_Results(
 			}
 			break;
 		default:
-			for (int i = 0; i < numprocs - 1; i++, (*round)+=0) {
+			for (i = 0; i < numprocs - 1; i++) {
 				if (rank <= numprocs - 1 -i) {	
-					for (int j= 0; j < numprocs; j++) {
+					for (j= 0; j < numprocs; j++) {
 						//printf("rank %d sends:\n", rank);
 						//print_local_result(local_res +j, rank);
 						MPI_Send_Local_Result(local_res + j,
@@ -180,7 +185,7 @@ void Gather_Local_Results(
 					}
 				}
 				if (rank < numprocs - 1 -i) {
-					for (int j =0; j < numprocs; j++) {
+					for (j =0; j < numprocs; j++) {
 						MPI_Recv_Local_Result(&temp, rank +1, *round);
 						Fill_Local_Result_With(local_res + j,
 							temp);	
@@ -250,26 +255,23 @@ void Do_Multiply(
 	//print_local_result_matrix(local_res_list, numprocs, rank);
 
 	Scatter_A_Lines(rank, numprocs, sub_matrices_a, len_submat_a,
-			a, local_a_submatrix, round);
+			a, local_a_submatrix, *round);
 	(*round)++;
-	//printf("rank %d has A submatrix:\n", rank);
-	//print_matrix(local_a_submatrix);
 
 	Scatter_B_Cols(rank, numprocs, sub_matrices_b, len_submat_b,
 			b, local_b_submatrix, *round);
 	(*round)++;
-	//printf("rank %d has B submatrix:\n", rank);
-	//print_matrix(local_b_submatrix);
-	puts("speed");
+	
+	//puts("speed");
 	Local_Computation_Each_Proc(numprocs, rank,
-		local_a_submatrix, *local_b_submatrix, *local_res, round);
-	//print_local_result_matrix(local_res_list, numprocs, rank);
-	puts("slooow?");
-	//MPI_Barrier(MPI_COMM_WORLD);
+		local_a_submatrix, *local_b_submatrix, *local_res, *round);
 	(*round)++;
+	//puts("slooow?");
+	
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   *local_res, round);
-	puts("slow_bis ?");
+	(*round)++;
+	//puts("slow_bis ?");
 }
 int main(int argc, char *argv[]) {
     int rank, numprocs;
@@ -314,7 +316,7 @@ int main(int argc, char *argv[]) {
 				numprocs);			
 		//printf("rank= %d\n", rank);
 		if (times == 1 && rank == 0)
-			print_matrix(w);
+			outputMatrix(w);
 		times--;
 	}
 
@@ -530,6 +532,44 @@ void print_matrix(Matrix *m) {
 				printf("%5u ", m->data[i]);
 	}
 	puts("\n");
+}
+void print_formatted_matrix(Matrix *m) {
+	if (!m) {
+		puts("print_matrix: null result Matrix*\n");
+		return;
+	}
+	int len = m->size;
+	for (int i = 0; i < len; ++i) {
+		if (m->data[i] == UINT_MAX)
+			if (i % m->width == 0)
+				if (i == 0)
+					printf("i ");
+				else
+					printf("\ni ");
+			else
+				printf("i ");
+		else
+			if (i % m->width == 0)
+				if (i == 0)
+					printf("%u ", m->data[i]);
+				else
+					printf("\n%u ", m->data[i]);
+			else
+				printf("%u ", m->data[i]);
+	}
+	puts("");
+
+}
+void outputMatrix(Matrix *m) {
+    for (int i = 0; i < m->height; i++) {
+        for (int j = 0; j < m->width; j++) {
+            if (GET(m, i, j) == UINT_MAX)
+				printf("i ");
+            else
+				printf("%i ", GET(m, i, j));
+        }
+        printf("\n");
+    }
 }
 
 /* .----------------------------. 
@@ -904,29 +944,25 @@ Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len){
 void Scatter_A_Lines(
 		int rank, int numprocs,
 		Matrix ***sub_matrices_a, int *len_submat_a,
-		Matrix *a, Matrix **local_a_submatrix, int *round) {
+		Matrix *a, Matrix **local_a_submatrix, int round) {
 	Matrix *ptr_m;
-	//puts("begin scatter A Lines");
-	//printf("rank %d local_a_submatrix: %p\n", rank,
-	//		(void*) local_a_submatrix);
-	*local_a_submatrix = NULL;//ERROR here	
+	*local_a_submatrix = NULL;
 	switch(rank) {
 		case 0:	
-			//printf("a: %p\n", (void*) a);
-			puts("a:");
-			print_matrix(a);
+			//puts("a:");
+			//print_matrix(a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_a)[i];
-				My_MPI_Send(ptr_m, (rank + 1) % numprocs, *round);
+				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
 			}
 			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
 			break;
 		default:
 			for (int i = 0; i < numprocs - rank; i++) {
 				Transmit_SubMatrix(i, numprocs,
-						rank, local_a_submatrix, *round);
+						rank, local_a_submatrix, round);
 			}
 			break;
 	}
@@ -940,12 +976,10 @@ void Scatter_B_Cols(
 	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
-			puts("b:");
-			print_matrix(b);
+			//puts("b:");
+			//print_matrix(b);
 			*sub_matrices_b = Explode_B_Into_Columns(
 					b, numprocs, len_submat_b);
-			//printf("len=%d\n", *len_submat_b);
-			//print_matrix_list_bis(*sub_matrices_b, *len_submat_b);
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_b)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
@@ -1141,12 +1175,13 @@ void Do_Local_Computation(int rank, int numprocs,
 void Local_Computation_Each_Proc(
 		int numprocs, int rank, Matrix **local_a_submatrix,
 		Matrix *local_b_submatrix, Local_Result *local_res,
-		int *round) {
+		int round) {
+	//#pragma omp parallel for
 	for (int i = 0; i < numprocs; i++) {
 		Do_Local_Computation(rank, numprocs, *local_a_submatrix,
 				local_b_submatrix, local_res, i);
 		Make_Local_A_Submatrices_Circulate(
-				rank, numprocs, local_a_submatrix, *round);
+				rank, numprocs, local_a_submatrix, round);
 	}
 }
 void Initialization_Local_Result(
