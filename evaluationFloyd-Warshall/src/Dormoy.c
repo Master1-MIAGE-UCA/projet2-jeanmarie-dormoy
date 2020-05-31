@@ -169,16 +169,9 @@ void Gather_Local_Results(
 				//#pragma omp parallel for firstprivate(i, _round)
 				//private(j, temp) shared(local_res, local_res_list)
 				for (j = 0; j < numprocs; j++) {
-					//printf("rank 0 before:\n");
-					//print_local_result_list(
-					//		local_res_list[i], numprocs, rank);
 					MPI_Recv_Local_Result(&temp, 1, *round);
-					//print_local_result(temp, rank);
 					Fill_Local_Result_With(
 							local_res_list[i] + temp->index, temp);
-					//printf("rank 0 after:\n");
-					//print_local_result_list(
-					//		local_res_list[i], numprocs, rank);
 					free(temp);
 				}
 			}
@@ -187,8 +180,6 @@ void Gather_Local_Results(
 			for (i = 0; i < numprocs - 1; i++) {
 				if (rank <= numprocs - 1 -i) {	
 					for (j= 0; j < numprocs; j++) {
-						//printf("rank %d sends:\n", rank);
-						//print_local_result(local_res +j, rank);
 						MPI_Send_Local_Result(local_res + j,
 								rank - 1, *round);
 					}
@@ -235,12 +226,6 @@ void Fill_Matrix_With_Results(Matrix *to_fill,
 				for (int col = 0; col < numprocs; col++) {
 					//printf("\tcol=%d\n", col);
 					temp = local_res_list[col][index];
-					//printf("temp=\n");
-					//puts("1>");
-					//printf("temp.mat->width=%d\n", temp.mat->width);
-					//printf("temp.mat->size=%d\n", temp.mat->size);
-					//print_matrix(temp.mat);
-					//puts("2>");
 					tmp_data = Get_Lineno(temp.mat, line);
 					//puts("3>");
 					for (int i = 0; i < temp.mat->width; i++) {
@@ -249,7 +234,6 @@ void Fill_Matrix_With_Results(Matrix *to_fill,
 					}
 					free(tmp_data);
 				}
-				//puts("here 2");
 			}
 		}
 }
@@ -262,12 +246,9 @@ void Do_Multiply(
 		int *round)
 {
 	Initialization_Local_Result(local_res, numprocs);
-	//print_local_result_matrix(local_res_list, numprocs, rank);
-
 	Scatter_A_Lines(rank, numprocs, sub_matrices_a, len_submat_a,
 			a, local_a_submatrix, *round);
 	(*round)++;
-
 	Scatter_B_Cols(rank, numprocs, sub_matrices_b, len_submat_b,
 			b, local_b_submatrix, *round);
 	(*round)++;
@@ -293,9 +274,7 @@ int main(int argc, char *argv[]) {
     int rank, numprocs;
 	FILE *fp = NULL;
 	Matrix **sub_matrices_a = NULL, 
-		   *a = NULL,
-		   **sub_matrices_b = NULL,
-		   *b = NULL;
+		   **sub_matrices_b = NULL;
 	Matrix *local_a_submatrix = NULL,
 		   *local_b_submatrix = NULL; 
 	Matrix *w = NULL;
@@ -315,21 +294,11 @@ int main(int argc, char *argv[]) {
 		w = matrixcpy(input_matx);
 		Initialization_Local_Result_List(
 				&local_res_list, numprocs);
-		/*
-		seq = sequentialMultiply(input_matx, input_matx);
-		puts("seq:");
-		print_matrix(seq);
-		par = parallelMultiply(input_matx, input_matx);
-		puts("parallel:");
-		print_matrix(par); */
 	}
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
-	//times = 1;
-	
 	
 	while (times) {
-		//puts("went here");
 		Do_Multiply(rank, numprocs, w, w,
 				&sub_matrices_a, &sub_matrices_b,
 				&len_submat_a, &len_submat_b, &local_a_submatrix,
@@ -339,7 +308,7 @@ int main(int argc, char *argv[]) {
 		//print_local_result_matrix(local_res_list, numprocs, rank);
 		Fill_Matrix_With_Results(w, local_res_list,
 				numprocs);		
-		//printf("rank= %d\n", rank);
+		
 		Destroy_All_Matrices(2, 
 				local_a_submatrix, local_b_submatrix);
 		Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
@@ -353,30 +322,20 @@ int main(int argc, char *argv[]) {
 
 	/* Finalizer */
 	if (rank == 0) {
-		/*
-		puts("a:")
-		print_matrix(a);
-		puts("b:");
-		print_matrix(b);*/
-		Destroy_All_Matrices(4, a, b, w, input_matx);
+		
+		Destroy_All_Matrices(2,  w, input_matx);
 		Destroy_Local_Result_Matrix(local_res_list, numprocs);
 		if (fp) fclose(fp);
 	}
-	/*
-	Destroy_All_Matrices(2, 
-			local_a_submatrix, local_b_submatrix);
-	Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
-	Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
-	Destroy_Local_Result_Array(local_res, numprocs); */
 	MPI_Finalize();
-	
 	gettimeofday(&t1, 0);
 	
-	/*
+#ifdef PRINT
 	double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
 		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
-	printf("Dormoy time:  %f\n", elapsed);*/
+	printf("Dormoy time:  %f\n", elapsed);
+#endif
 	return 0;
 }
 
@@ -863,30 +822,30 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	int i, j, k, iOff, jOff;
 	int log_dim, power, k_max, p;
 	unsigned int *temp = NULL;
+	log_dim = log2_int(a->width); 
 	//struct timeval t0, t1;
 	//gettimeofday(&t0, 0);
 
-	log_dim = log2_int(a->width); 
 	#pragma omp parallel for private(i, iOff) shared(res)
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
 		
 		#pragma omp parallel for private(j, jOff, temp)	
 		for(j=0; j < b->width; j++){
+			jOff = j * b->height;
 			temp = calloc(a->width, sizeof(unsigned int));
 			if (!temp) {
 				fprintf(stderr,
 						"parallelMultiply: temp calloc error\n");
 				exit(18);
 			}
-			jOff = j * b->height;
+
 			#pragma omp parallel for private(k)
 			for(k=0; k< a->width; k++){
 				temp[k] = Check_Infinity(a->data[iOff + k],
 						convB->data[jOff + k]);
 			}
-			//print_raw_array(temp, a->width);
-			//puts("--------");
+
 			#pragma omp parallel for private(p)
 			for (p = 0; p <= log_dim; p++) {
 				power = pow(2, p);
@@ -895,10 +854,8 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 					firstprivate(k_max, power)
 				for (k = 0; k < k_max; k += power) {
 					temp[k] = MIN(temp[k], temp[k + power]);
-					//print_raw_array(temp, a->width);
 				}
 			}
-			//print_raw_array(temp, a->width);
 			SET(res, i, j, temp[0]);
 			free(temp);
 		}
