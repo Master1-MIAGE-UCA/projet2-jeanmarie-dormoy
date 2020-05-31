@@ -12,7 +12,7 @@ srcFolder="src/"
 # Change number of processors
 #np = 3
 np =4
-datasets=[2,3]
+datasets=[2,3,4]
 #for dataset 4, minimum timeout timeout required is 8s
 
 def check_output(resultFile, output) :
@@ -33,7 +33,7 @@ def check_output(resultFile, output) :
 def runDataset(name, i) :
     output=""
     try:
-        timeout=9
+        timeout=20 #9 limit minimum
         if (i>5) :
             timeout=60
         binFile=binFolder+name

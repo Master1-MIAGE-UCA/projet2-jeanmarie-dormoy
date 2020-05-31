@@ -13,7 +13,13 @@
 #define LINE_SIZE 500
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
-
+//#define MIN(a,b) ((a) < (b) ? a : b)
+static inline unsigned int MIN(unsigned int a, unsigned int b) {
+	if (a < b)
+		return a;
+	else 
+		return b;
+}
 typedef struct Matrix {
     unsigned int *data;
     int width;
@@ -107,8 +113,11 @@ void Scatter_B_Cols(
 		int round);
 
 /* Specific Product with min/+			*/
+Matrix *sequentialMultiply(Matrix *a, Matrix *b);
 Matrix *parallelMultiplyBySelf(Matrix *m);
 Matrix *parallelMultiply(Matrix *a, Matrix *b);
+unsigned int Check_Infinity(unsigned int a, unsigned int b);
+int log2_int(int z);
 
 /* Circulation of Local A SubMatrices	*/
 void Make_Local_A_Submatrices_Circulate(int rank, int numprocs,
@@ -204,8 +213,9 @@ unsigned int* Get_Lineno(Matrix *m, int line) {
 		fprintf(stderr, "Get_Lineno: calloc error\n");
 		exit(16);
 	}
+	int col;
 	#pragma omp parallel for
-	for (int col = 0; col < m->width; col++)
+	for (col = 0; col < m->width; col++)
 		res[col] = GET(m, line, col);
 	return res;
 }
@@ -277,23 +287,22 @@ int log2_int(int z) {
 	return floor(log2((double) z));
 }
 int main(int argc, char *argv[]) {
+	int len_submat_a = 0, len_submat_b = 0;
+	Local_Result *local_res = NULL;
+	Local_Result **local_res_list = NULL;
     int rank, numprocs;
 	FILE *fp = NULL;
-	int len_submat_a = 0, len_submat_b = 0;
-	Local_Result *local_res = NULL,
-				 **local_res_list = NULL;
 	Matrix **sub_matrices_a = NULL, 
-		   *a = NULL;
+		   *a = NULL,
+		   **sub_matrices_b = NULL,
+		   *b = NULL;
 	Matrix *local_a_submatrix = NULL,
-		   *local_b_submatrix = NULL, 
-		   *b = NULL,
-		   *w = NULL,
-		   **sub_matrices_b = NULL;
-	Matrix *input_matx = NULL, *res = NULL;
+		   *local_b_submatrix = NULL; 
+	Matrix *w = NULL;
+	Matrix *input_matx = NULL; //*res = NULL;
     unsigned int times;
 	int round = 0;
-	struct timeval t0, t1;
-	gettimeofday(&t0, 0);
+	struct timeval t0, t1; gettimeofday(&t0, 0);
 	MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -306,10 +315,19 @@ int main(int argc, char *argv[]) {
 		w = matrixcpy(input_matx);
 		Initialization_Local_Result_List(
 				&local_res_list, numprocs);
+		/*
+		seq = sequentialMultiply(input_matx, input_matx);
+		puts("seq:");
+		print_matrix(seq);
+		par = parallelMultiply(input_matx, input_matx);
+		puts("parallel:");
+		print_matrix(par); */
 	}
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
 	//times = 1;
+	
+	
 	while (times) {
 		//puts("went here");
 		Do_Multiply(rank, numprocs, w, w,
@@ -322,6 +340,12 @@ int main(int argc, char *argv[]) {
 		Fill_Matrix_With_Results(w, local_res_list,
 				numprocs);		
 		//printf("rank= %d\n", rank);
+		Destroy_All_Matrices(2, 
+				local_a_submatrix, local_b_submatrix);
+		Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
+		Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
+		Destroy_Local_Result_Array(local_res, numprocs);
+		
 		if (times == 1 && rank == 0)
 			outputMatrix(w);
 		times--;
@@ -329,22 +353,30 @@ int main(int argc, char *argv[]) {
 
 	/* Finalizer */
 	if (rank == 0) {
-		Destroy_All_Matrices(4, a, b, w, input_matx, res);
+		/*
+		puts("a:")
+		print_matrix(a);
+		puts("b:");
+		print_matrix(b);*/
+		Destroy_All_Matrices(4, a, b, w, input_matx);
 		Destroy_Local_Result_Matrix(local_res_list, numprocs);
 		if (fp) fclose(fp);
 	}
+	/*
 	Destroy_All_Matrices(2, 
 			local_a_submatrix, local_b_submatrix);
 	Destroy_Matrix_Array(sub_matrices_a, len_submat_a);
 	Destroy_Matrix_Array(sub_matrices_b, len_submat_b);
-	Destroy_Local_Result_Array(local_res, numprocs);
+	Destroy_Local_Result_Array(local_res, numprocs); */
 	MPI_Finalize();
 	
 	gettimeofday(&t1, 0);
+	
+	/*
 	double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
 		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
-	//printf("Dormoy time:  %f\n", elapsed);
+	printf("Dormoy time:  %f\n", elapsed);*/
 	return 0;
 }
 
@@ -486,7 +518,10 @@ void print_local_result_matrix(Local_Result **local_res,
 void print_raw_array(unsigned int *arr, int len) {
 	//printf("print_raw_array arr=%p len=%d\n", arr, len);
 	for (int i = 0; i < len; i++)
-		printf("%d  ", arr[i]);
+		if (arr[i] == UINT_MAX)
+			printf("i  ");
+		else
+			printf("%u  ", arr[i]);
 	puts("\\");
 }
 void print_matrix_list(Matrix **m, int len) {
@@ -619,8 +654,9 @@ Matrix *matrixcpy(Matrix *src) {
 	if (!src || !src->data)
 		return NULL;
 	Matrix *dest = new_Matrix(src->height, src->width);
+	int i;
 	#pragma omp parallel for
-	for(int i=0; i < src->size; i++)
+	for(i=0; i < src->size; i++)
 		dest->data[i] = src->data[i];
 	return dest;
 }
@@ -631,8 +667,9 @@ Matrix *matrixcpy_bis(Matrix *dest, Matrix *src) {
 	dest->size = src->size;
 	dest->width = src->width;
 	dest->height = src->height;
+	int i;
 	#pragma omp parallel for
-	for(int i=0; i < src->size; i++)
+	for(i=0; i < src->size; i++)
 		dest->data[i] = src->data[i];
 	return dest;
 }
@@ -640,9 +677,11 @@ Matrix *matrixcpy_reverseIndex(Matrix *src) {
 	if (!src || !src->data)
 		return NULL;
 	Matrix *res = new_Matrix(src->width, src->height);
+	int i, j;
 	#pragma omp parallel for
-	for(int i=0; i < src->height; i++)
-		for(int j=0; j < src->width; j++)
+	for(i=0; i < src->height; i++)
+		#pragma omp parallel for
+		for(j=0; j < src->width; j++)
 			res->data[j*src->height + i] = 
 				GET(src, i, j);
 	return res;
@@ -755,21 +794,23 @@ Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 		exit(7);
 	}
 	Matrix *res = new_Matrix(a->height, b->width);
+	unsigned int temp;
 	struct timeval t0, t1;
 	gettimeofday(&t0, 0);
 	for(int i=0; i < a->height; i++){
 		for(int j=0; j < b->width; j++){
-			SET(res, i, j, 0);
+			SET(res, i, j, UINT_MAX);
 			for(int k=0; k< a->width; k++){
-				GET(res, i, j) += 
-					GET(a, i, k) * GET(b, k, j);
+				temp = Check_Infinity(GET(a, i, k), GET(b, k, j));
+				if (GET(res, i, j) > temp)
+					SET(res, i, j, temp);
 			}
 		}
 	}
 	gettimeofday(&t1, 0);
-	//double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
 
-	//printf("sequentialMultiply time:  %f\n", elapsed);
+	printf("sequentialMultiply time:  %f\n", elapsed);
 	return res;
 }
 Matrix *sequentialMultiplyBySelf(Matrix *m) {
@@ -789,8 +830,11 @@ void Transform_A_Into_W(Matrix *a) {
 	 * wij = weight of  (i,j) if there is an edge between i and j
 	 * wij = +inf otherwise
 	 * */
-	for (int line = 0; line < a->height; line++)
-		for (int col = 0; col < a->width; col++)
+	int line, col;
+	#pragma omp parallel for private(line)
+	for (line = 0; line < a->height; line++)
+		#pragma omp parallel for private(col)
+		for (col = 0; col < a->width; col++)
 			if (line == col)
 				SET(a, line, col, 0);
 			else if (GET(a, line, col) == 0)
@@ -816,34 +860,55 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	}
 	Matrix *res = new_Matrix(a->height, b->width);
 	Matrix *convB = matrixcpy_reverseIndex(b);
-	int i, j, k, iOff, jOff, current_min, a_oprd, b_oprd;
-	unsigned int _min;
-	struct timeval t0, t1;
-	gettimeofday(&t0, 0);
-	#pragma omp parallel for private(i, j, k, iOff, jOff, \
-			current_min, _min, a_oprd, b_oprd) shared(res)
+	int i, j, k, iOff, jOff;
+	int log_dim, power, k_max, p;
+	unsigned int *temp = NULL;
+	//struct timeval t0, t1;
+	//gettimeofday(&t0, 0);
+
+	log_dim = log2_int(a->width); 
+	#pragma omp parallel for private(i, iOff) shared(res)
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
+		
+		#pragma omp parallel for private(j, jOff, temp)	
 		for(j=0; j < b->width; j++){
-			jOff = j * b->height;
-			current_min = UINT_MAX;
-			_min = UINT_MAX;
-			#pragma omp parallel for reduction(min: _min)
-			for(k=0; k< a->width; k++){
-				a_oprd = a->data[iOff + k] ;
-				b_oprd = convB->data[jOff + k];
-				current_min = Check_Infinity(a_oprd, b_oprd);
-				if (current_min < _min)
-					_min = current_min;
+			temp = calloc(a->width, sizeof(unsigned int));
+			if (!temp) {
+				fprintf(stderr,
+						"parallelMultiply: temp calloc error\n");
+				exit(18);
 			}
-			SET(res, i, j, _min);
+			jOff = j * b->height;
+			#pragma omp parallel for private(k)
+			for(k=0; k< a->width; k++){
+				temp[k] = Check_Infinity(a->data[iOff + k],
+						convB->data[jOff + k]);
+			}
+			//print_raw_array(temp, a->width);
+			//puts("--------");
+			#pragma omp parallel for private(p)
+			for (p = 0; p <= log_dim; p++) {
+				power = pow(2, p);
+				k_max = a->width - power;
+				#pragma omp parallel for private(k) \
+					firstprivate(k_max, power)
+				for (k = 0; k < k_max; k += power) {
+					temp[k] = MIN(temp[k], temp[k + power]);
+					//print_raw_array(temp, a->width);
+				}
+			}
+			//print_raw_array(temp, a->width);
+			SET(res, i, j, temp[0]);
+			free(temp);
 		}
 	}
+	/*
 	gettimeofday(&t1, 0);
-	/*double elapsed =
+	double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
-		(t1.tv_usec - t0.tv_usec) / 1000000.0f;*/
-	//printf("parallelMultiply time:  %f\n", elapsed);
+		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
+	printf("parallelMultiply time:  %f\n", elapsed); */
 	free(convB);
 	return res;
 }
@@ -860,7 +925,9 @@ Matrix *parallelMultiplyBySelf(Matrix *m) {
  * .-------------.
  */
 void fill_submatrix(Matrix *m, Matrix *A, int *offset) {
-	for (int i = 0; i < m->size; i++) {
+	int i;
+	#pragma omp parallel for
+	for (i = 0; i < m->size; i++) {
 		m->data[i] = A->data[*offset +i];
 	}
 	*offset += m->size;
