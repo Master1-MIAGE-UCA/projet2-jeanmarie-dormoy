@@ -15,10 +15,10 @@ Colonne B:	```2
 			4		
 			3
 			3```\
-Ligne A : ```1 2 3 4 5 6 7 9```
+Ligne A : ```1 2 3 4 5 6 7 9```\
 On calcule:
-- ```1+2 = 3```	stocké dans temp[0]
-		   ```2+4 = 6```		        temp[1]
+- ```1+2 = 3```	stocké dans temp[0]\
+		   ```2+4 = 6```		        temp[1]\
 		   etc..
 
 - On obtient: le tableau temp:
