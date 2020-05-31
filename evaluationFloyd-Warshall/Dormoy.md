@@ -1,6 +1,14 @@
 # SI4 - Spring 2020 - Project 2 Parallelism
 ## Author:	Jean-Marie DORMOY
 
+### Partie Lecture de Fichier
+```c
+int first_pass(char *s);
+/*	Parse la 1ère ligne du fichier d'input pour déterminer le nombre d'éléments contenus dans
+	cette ligne. On en déduit ensuite les dimensions de la matrice carrée passée en input.		*/
+
+
+```
 
 ### Partie multiplication min/+ parallèle openMP
 
