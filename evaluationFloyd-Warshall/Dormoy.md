@@ -14,7 +14,7 @@ Colonne B:	```2
 			1		
 			4		
 			3
-			3```
+			3```\
 Ligne A : ```1 2 3 4 5 6 7 9```
 On calcule:
 - ```1+2 = 3```	stocké dans temp[0]
