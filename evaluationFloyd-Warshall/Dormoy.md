@@ -12,11 +12,12 @@ taille ```[8x8]```, est de faire 3 tours de boucle, où on calculera successivem
 - ```W^8 = Do_Multiply(W⁴, W⁴)```\
 \
 Cet algorithme nous donne une complexité en O(log2(N)) au lieu de O(N) pour obtenir W^n.\
+\
 Lorsqu'on arrive à la fin de chaque tour de boucle, on libère les ressources qui ont été allouées
 lors de la multiplication en anneau effectuée durant ce tour de boucle. Cette partie pourrait être
 optimisée en conservant l'allocation de ces ressources et en modifiant les valeurs contenues
 dans celles-ci à chaque multiplication en anneau (on libère toutes les ressources, et ce uniquement à la fin du programme).\
-\
+
 ```c
 void Do_Multiply(
 		int rank, int numprocs, Matrix *a, Matrix *b,
@@ -35,8 +36,8 @@ appelle dans l'ordre:\n
 - Scatter_A_Lines
 - Scatter_B_Cols
 - Local_Computation_Each_Proc
-- Gather_Local_Results\
-\
+- Gather_Local_Results
+
 Les appels à chacune de ces fonctions (qui utilisent toutes MPI_Send/Recv, hormis la première) se font avec un tag MPI spécifique pour chacune d'entre elles, afin de discriminer les envois et réceptions
 de message MPI entre différents appels de fonction (à l'origine de ces envois de message).
 
