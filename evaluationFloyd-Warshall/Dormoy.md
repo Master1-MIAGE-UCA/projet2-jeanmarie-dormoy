@@ -14,7 +14,8 @@ taille ```[8x8]```, est de faire 3 tours de boucle, où on calculera successivem
 Cet algorithme nous donne une complexité en O(log2(N)) au lieu de O(N) pour obtenir W^n.\
 \
 Lorsqu'on arrive à la fin de chaque tour de boucle, on libère les ressources qui ont été allouées
-lors de la multiplication en anneau effectuée durant ce tour de boucle. Cette partie pourrait être
+lors de la multiplication en anneau effectuée durant ce tour de boucle (la liste de Local_Result
+allouée par chaque processus). Cette partie pourrait être
 optimisée en conservant l'allocation de ces ressources et en modifiant les valeurs contenues
 dans celles-ci à chaque multiplication en anneau (on libère toutes les ressources, et ce uniquement à la fin du programme).
 
