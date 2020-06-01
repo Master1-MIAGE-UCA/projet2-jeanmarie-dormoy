@@ -165,15 +165,12 @@ void Do_Multiply(
 	Scatter_B_Cols(rank, numprocs, sub_matrices_b, len_submat_b,
 			b, local_b_submatrix, *round);
 	(*round)++;
-	puts("slooow");	
 	Local_Computation_Each_Proc(numprocs, rank,
 		local_a_submatrix, *local_b_submatrix, *local_res, *round);
 	(*round)++; 
-	puts("here ??");
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   *local_res, *round);
 	(*round)++;
-	puts("wait ?");
 } 
 
 int main(int argc, char *argv[]) {
