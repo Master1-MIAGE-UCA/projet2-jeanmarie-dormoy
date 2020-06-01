@@ -56,14 +56,16 @@ au lieu de ceux de A: ainsi, l'écriture de ```Fill_Matrix_With_Results``` se fe
 ### 1. Lecture de Fichier
 ```c
 int first_pass(char *s);
-/* Parse la 1ère ligne du fichier d'input pour déterminer le nombre d'éléments contenus dans
-   cette ligne. On en déduit ensuite les dimensions de la matrice carrée passée en input. */
-
-Matrix *build_matrix(FILE *fp);
-/* Renvoie l'adresse d'une Matrice allouée dynamiquement et remplie avec le contenu du fichier
-   correspondant au FILE* fp */
-
 ```
+Parse la 1ère ligne du fichier d'input pour déterminer le nombre d'éléments contenus dans
+cette ligne. On en déduit ensuite les dimensions de la matrice carrée passée en input.
+
+```c
+Matrix *build_matrix(FILE *fp);
+```
+Renvoie l'adresse d'une Matrice allouée dynamiquement et remplie avec le contenu du fichier
+correspondant au FILE* fp. 
+
 ### 2. Transformation A -> W
 ```c
 void Transform_A_Into_W(Matrix *a);
