@@ -51,8 +51,7 @@ void Destroy_Local_Result_Matrix(
 void print_raw_array(unsigned int *arr, int len);
 void print_raw_matrix(Matrix *m);
 void print_matrix(Matrix *m);
-void print_formatted_matrix(Matrix *m);
-void outputMatrix(Matrix *m);
+void Output_Matrix(Matrix *m);
 void print_local_result(Local_Result *local_res, int rank);
 void print_local_result_list(
 		Local_Result *local_res, int len, int rank);
@@ -167,16 +166,13 @@ void Do_Multiply(
 			b, local_b_submatrix, *round);
 	(*round)++;
 	
-	//puts("speed");
 	Local_Computation_Each_Proc(numprocs, rank,
 		local_a_submatrix, *local_b_submatrix, *local_res, *round);
 	(*round)++; 
-	//puts("slooow?");
 	
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   *local_res, *round);
 	(*round)++;
-	//puts("slow_bis ?");
 } 
 
 int main(int argc, char *argv[]) {
@@ -190,7 +186,7 @@ int main(int argc, char *argv[]) {
 	Matrix *local_a_submatrix = NULL,
 		   *local_b_submatrix = NULL; 
 	Matrix *w = NULL;
-	Matrix *input_matx = NULL; //*res = NULL;
+	Matrix *input_matx = NULL;
     unsigned int times;
 	int round = 0;
 	struct timeval t0, t1; gettimeofday(&t0, 0);
@@ -209,15 +205,14 @@ int main(int argc, char *argv[]) {
 	}
 	Propagate_Number(rank, numprocs, &times, round);
 	round++;
-	
+
+	/* log2(input_matx->height ring multiplications */	
 	while (times) {
 		Do_Multiply(rank, numprocs, w, w,
 				&sub_matrices_a, &sub_matrices_b,
 				&len_submat_a, &len_submat_b, &local_a_submatrix,
 				&local_b_submatrix, local_res_list,
 				&local_res, &round);
-		//puts("------------------------------------");
-		//print_local_result_matrix(local_res_list, numprocs, rank);
 		Fill_Matrix_With_Results(w, local_res_list,
 				numprocs);		
 		
@@ -228,7 +223,7 @@ int main(int argc, char *argv[]) {
 		Destroy_Local_Result_Array(local_res, numprocs);
 		
 		if (times == 1 && rank == 0)
-			outputMatrix(w);
+			Output_Matrix(w);
 		times--;
 	}
 
@@ -349,8 +344,6 @@ void Destroy_All_Matrices(int num, ...) {
     va_start(valist, num);
     for (int i = 0; i < num; i++) { 
 		temp = va_arg(valist, Matrix*);
-		//printf("i=%d\n", i);
-		//printf("matrix @= %p\n", (void*) temp);
 		if (temp)
 			Destroy_Matrix(temp);
 	}
@@ -364,9 +357,6 @@ void Destroy_All_Matrices(int num, ...) {
 
 void print_local_result(Local_Result *local_res, int rank) {
 	if (local_res) {
-		printf("rank= %d\n", rank);
-		printf("local_res.index = %d\n", local_res->index);
-		puts("local_res.mat = ");
 		print_matrix(local_res->mat);
 	}
 }
@@ -374,7 +364,6 @@ void print_local_result_list(Local_Result *local_res,
 		int len, int rank) {
 	if (local_res)
 		for (int i = 0; i < len; i++) {
-			//printf("ii=%d\n", i);
 			print_local_result(local_res + i, rank);
 		}
 }
@@ -382,12 +371,10 @@ void print_local_result_matrix(Local_Result **local_res,
 		int len, int rank) {
 	if (local_res)
 		for (int i = 0; i < len; i++) {
-			//printf("i=%d\n", i);
 			print_local_result_list(local_res[i], len, rank);
 		}
 }
 void print_raw_array(unsigned int *arr, int len) {
-	//printf("print_raw_array arr=%p len=%d\n", arr, len);
 	for (int i = 0; i < len; i++)
 		if (arr[i] == UINT_MAX)
 			printf("i  ");
@@ -430,7 +417,6 @@ void print_matrix(Matrix *m) {
 		puts("print_matrix: null Matrix*\n");
 		return;
 	}
-	//printf("h=%d w=%d\n", m->height, m->width);
 	int len = m->width * m->height;
 	for (int i = 0; i < len; ++i) {
 		if (m->data[i] == UINT_MAX)
@@ -452,34 +438,7 @@ void print_matrix(Matrix *m) {
 	}
 	puts("\n");
 }
-void print_formatted_matrix(Matrix *m) {
-	if (!m) {
-		puts("print_matrix: null result Matrix*\n");
-		return;
-	}
-	int len = m->size;
-	for (int i = 0; i < len; ++i) {
-		if (m->data[i] == UINT_MAX)
-			if (i % m->width == 0)
-				if (i == 0)
-					printf("i ");
-				else
-					printf("\ni ");
-			else
-				printf("i ");
-		else
-			if (i % m->width == 0)
-				if (i == 0)
-					printf("%u ", m->data[i]);
-				else
-					printf("\n%u ", m->data[i]);
-			else
-				printf("%u ", m->data[i]);
-	}
-	puts("");
-
-}
-void outputMatrix(Matrix *m) {
+void Output_Matrix(Matrix *m) {
     for (int i = 0; i < m->height; i++) {
         for (int j = 0; j < m->width; j++) {
             if (GET(m, i, j) == UINT_MAX)
@@ -567,12 +526,10 @@ int first_pass(char *s) {
 	int len = 0;
 	token = strtok(s, " ");
 	while (token) {
-		//printf("|%s| ", token);
 		if (strcmp(token, "\n") != 0)
 			len +=1;
 		token = strtok(NULL, " ");
 	}
-	//puts("");
 	return len;
 }
 void fill_matrix_with_line(
@@ -580,7 +537,6 @@ void fill_matrix_with_line(
 	char *token;
 	token = strtok(line, " ");
 	while (token) {
-		//printf("|%s| ", token);
 		if (strcmp(token, "\n") != 0) {
 			array[*index] = atoi(token);
 			*index += 1;
@@ -626,7 +582,6 @@ Matrix *build_matrix(FILE *fp) {
 	rewind(fp);
 	while ((fgets(line, LINE_SIZE, fp)) != NULL) {
 		fill_matrix_with_line(res->data, &index, line);
-		//read = getline(&line, &len, fp);
 	}
 	if (line) free(line);
 	if (save) free(save);
@@ -679,9 +634,10 @@ Matrix *sequentialMultiply(Matrix *a, Matrix *b) {
 		}
 	}
 	gettimeofday(&t1, 0);
+#ifdef PRINT
 	double elapsed = (t1.tv_sec-t0.tv_sec) * 1.0f + (t1.tv_usec - t0.tv_usec) / 1000000.0f;
-
 	printf("sequentialMultiply time:  %f\n", elapsed);
+#endif
 	return res;
 }
 Matrix *sequentialMultiplyBySelf(Matrix *m) {
@@ -717,11 +673,11 @@ unsigned int Check_Infinity(unsigned int a, unsigned int b) {
 		return UINT_MAX;
 	return a + b;
 }
-/*
- * Compute W^n by replacing the multiplication operation with an 
- * addition and the addition with a min. 
- */
 Matrix *parallelMultiply(Matrix *a, Matrix *b) {
+	/*
+	 * Compute W^n by replacing the multiplication operation with an 
+	 * addition and the addition with a min. 
+	 */
 	if (a->width != b->height) {
 		fprintf(
 				stderr, 
@@ -735,9 +691,10 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 	int log_dim, power, k_max, p;
 	unsigned int *temp = NULL;
 	log_dim = log2_int(a->width); 
-	//struct timeval t0, t1;
-	//gettimeofday(&t0, 0);
-
+#ifdef PRINT
+	struct timeval t0, t1;
+	gettimeofday(&t0, 0);
+#endif
 	#pragma omp parallel for private(i, iOff) shared(res)
 	for(i=0; i < a->height; i++){
 		iOff = i * a->width;
@@ -772,12 +729,13 @@ Matrix *parallelMultiply(Matrix *a, Matrix *b) {
 			free(temp);
 		}
 	}
-	/*
+#ifdef PRINT
 	gettimeofday(&t1, 0);
 	double elapsed =
 		(t1.tv_sec-t0.tv_sec) * 1.0f + 
 		(t1.tv_usec - t0.tv_usec) / 1000000.0f;
-	printf("parallelMultiply time:  %f\n", elapsed); */
+	printf("parallelMultiply time:  %f\n", elapsed);
+#endif
 	free(convB);
 	return res;
 }
@@ -868,14 +826,8 @@ void Scatter_A_Lines(
 	*local_a_submatrix = NULL;
 	switch(rank) {
 		case 0:	
-			//puts("a:");
-			//print_matrix(a);
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
-			/*
-			puts("-----------------------");
-			print_matrix_list(*sub_matrices_a, numprocs);*/
-			
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_a)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
@@ -889,7 +841,6 @@ void Scatter_A_Lines(
 			}
 			break;
 	}
-	//printf("rank=%d end Scatter_A_Lines\n", rank);
 }
 void Scatter_B_Cols(
 		int rank, int numprocs, Matrix ***sub_matrices_b,
@@ -899,12 +850,8 @@ void Scatter_B_Cols(
 	*local_b_submatrix = NULL;	
 	switch(rank) {
 		case 0:	
-			//puts("b:");
-			//print_matrix(b);
 			*sub_matrices_b = Explode_B_Into_Columns(
 					b, numprocs, len_submat_b);
-			/*puts("-----------------------");
-			print_matrix_list(*sub_matrices_b, numprocs);*/
 			for (int i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_b)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
@@ -969,16 +916,12 @@ void Transmit_SubMatrix(
 	}
 	MPI_Recv(buffer, size_msg, MPI_INT, sender, round,
 			MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	//printf("received at rank: %d\n", rank);
-	//print_raw_array(buffer, size_msg);
 	if (iter == numprocs - rank - 1) {
 		*local_submatrix = new_Matrix(
 			dimensions[0], dimensions[1]);
 		unsigned_int_cpy(
 				(*local_submatrix)->data, 
 				buffer, size_msg);
-		//printf("%d finally got:\n", rank);
-		//print_matrix(*local_submatrix);
 	}
 	if (rank != numprocs - 1) {
 		MPI_Send(dimensions, 2, MPI_INT, (rank + 1) % numprocs, 
@@ -1067,15 +1010,12 @@ void Make_Local_A_Submatrices_Circulate(
 			if (rank == 0) sender = numprocs - 1;
 			My_MPI_Send(*local_a_submatrix,
 					(rank + 1) % numprocs, round);
-			//puts("1");
 			My_MPI_Recv(local_a_submatrix, sender, round);
 			break;	
 		default:
 			save = matrixcpy(*local_a_submatrix);
 			My_MPI_Recv(local_a_submatrix, sender, round);
-			//printf("2> rank=%d\n", rank);
 			My_MPI_Send(save, (rank + 1) % numprocs, round);
-			//printf("3> rank=%d\n", rank);
 			break;
 	}
 }
@@ -1101,7 +1041,6 @@ void Local_Computation_Each_Proc(
 		int numprocs, int rank, Matrix **local_a_submatrix,
 		Matrix *local_b_submatrix, Local_Result *local_res,
 		int round) {
-	//#pragma omp parallel for
 	for (int i = 0; i < numprocs; i++) {
 		Do_Local_Computation(rank, numprocs, *local_a_submatrix,
 				local_b_submatrix, local_res, i);
@@ -1251,9 +1190,3 @@ int Test_Equals(Matrix *a, Matrix *b) {
 		}
 	return 1;
 }
-
-/*
-equals = Test_Equals(seq_res, parallel_res);
-printf("seq_res == parallel_res: %s\n",
-		equals ? "yes" : "no");
-		*/
