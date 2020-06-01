@@ -121,11 +121,44 @@ void Scatter_B_Cols(
 ```
 Elles utilisent les 2 méthodes précédentes générant la liste de sous-matrices de A ou de B. Ensuite, le
 processus p0 envoie l'une derrière l'autre les sous-matrices d'index numprocs -1, numprocs - 2, ..., 1.
+Le processus p_numprocs-1 reçoit au final la sous-matrice d'index numproc -1, ..., le processus p1 reçoit celle d'index 1.
 Pour les processus différents de p0, tant que la sous-matrice reçue n'est pas arrivée à son destinataire
-final, elle est retransmise au processus suivant.
+final, elle est retransmise au processus suivant (grâce à Transmit_SubMatrix).
 À la fin du procédé, chaque processus possède un bloc de A et un bloc de B. On précise qu'après la phase
 de scatter, un bloc de B ne bougera pas de son processus, tandis qu'un bloc de A sera amené à circuler
 lors de la phase de calcul.
+
+### 5. Phase de Calcul (inclut la circulation)
+
+Une fois le scatter terminé, on peut réaliser la phase de calcul qui consiste à alterner:
+Calcul local -> Circulation -> Calcul local -> Circulation -> ... -> Calcul local -> Circulation
+
+On utilise une structure Local_Result qui contient: 
+- un int correspondant à l'index/position de la sous-matrice résultat dans le processus considéré, ce qui nous sera utile pour la phase de gather pour parcourir dans l'ordre les sous-matrices résultat
+- l'adresse de la sous-matrice résultat
+
+À la fin de la phase de calcul, chaque processus contient une liste de numprocs Local_Result qu'il faudra
+ensuite gather.
+```c
+void Local_Computation_Each_Proc(
+		int numprocs, int rank, Matrix **local_a_submatrix,
+		Matrix *local_b_submatrix, Local_Result *local_res,
+		int round);
+```
+Cette fonction consiste, pour chacun des numprocs Local_Result de  chaque processus, à calculer la 
+sous-matrice résultant de la multiplication du sous-bloc de A et du sous-bloc de B actuellement présents
+dans le processus, et à stocker cette sous-matrice résultat dans le Local_Result courant.
+Pour tous les processus, chaque étape de calcul de sous-matrice résultat est alterné avec un appel à
+la circulation pour faire tourner les sous-blocs de A dans l'anneau.
+```c
+void Make_Local_A_Submatrices_Circulate(
+		int rank, int numprocs, Matrix **local_a_submatrix, 
+		int round);
+```
+Le code de cette méthode est assez bref: tous les processus de rang pair envoient leur sous-bloc de A au processus suivant. Ensuite, tous les processus impairs sauvegardent leur sous-bloc de A courant, le remplacent par le sous-bloc de A reçu (celui qui a été envoyé par les processus pairs situés juste avant ceux-ci
+dans l'anneau) et transmettent l'ancien sous-bloc sauvegardé au processus pair qui suit dans l'aneau.
+
+
 
 
 ### Multiplication min/+ parallèle openMP
