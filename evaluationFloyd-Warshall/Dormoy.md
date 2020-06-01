@@ -44,15 +44,15 @@ de message MPI entre différents appels de fonction (à l'origine de ces envois 
 ```c
 Fill_Matrix_With_Results(w, local_res_list, numprocs);
 ```
-- Après l'exécution de la méthode Do_Multiply (qui a fait un gather), la variable local_res_list dans le 
+- Après l'exécution de la méthode Do_Multiply (qui a fait un gather), la variable ```local_res_list``` dans le 
 main du processus 0 contient toutes les sous-matrices correspondant aux résultats partiels de tous les 
-processeurs. Cette méthode met "proprement" à jour la matrice W avec ces résultats partiels. W mise à jour, on peut continuer la boucle pour calculer W^n.\
+processeurs. Cette méthode met "proprement" à jour la matrice W avec ces résultats partiels. W mise à jour, on peut continuer la boucle pour calculer W^n.
 - il n'est pas possible, a priori, d'utiliser openMP pour paralléliser cette méthode: en effet, les 
 données doivent être écrites dans un ordre bien précis dans la variable w, ce qui ne se prête pas au 
 parallélisme. C'est dommage, car cette méthode contient 4 boucles imbriquées (car on fait circuler les 
 blocs de A et pas ceux de B), ce qui ajoute 2s de temps d'exécution supplémentaires pour -np 5 et mat_3 
 en input. Une amélioration possible pour gagner en temps d'exécution est la circulation des blocs de B 
-au lieu de ceux de A: ainsi, l'écriture de Fill_Matrix_With_Results se ferait avec moins de boucles imbriquées.\
+au lieu de ceux de A: ainsi, l'écriture de ```Fill_Matrix_With_Results``` se ferait avec moins de boucles imbriquées (car on devrait fusionner des lignes, pas des colonnes).
 ### 1. Lecture de Fichier
 ```c
 int first_pass(char *s);
@@ -67,25 +67,25 @@ Matrix *build_matrix(FILE *fp);
 ### 2. Transformation A -> W
 ```c
 void Transform_A_Into_W(Matrix *a);
-/* Pour Obtenir la matrice W
- * Modification de la matrice a passée en paramètre in-place avec les règles suivantes: 
- * wij = 0 if i = j
- * wij = weight of  (i,j) if there is an edge between i and j
- * wij = +inf otherwise
- */
 ```
+Pour Obtenir la matrice W, on modifie la matrice a passée en paramètre "in-place" avec les règles suivantes: 
+- wij = 0 if i = j
+- wij = weight of  (i,j) if there is an edge between i and j
+- wij = +inf otherwise
 ### 3. Allocation des Data Structures
 ```c
 void Initialization_Local_Result_List(Local_Result ***local_res_list, int numprocs);
-/* Permet d'allouer dynamiquement un tableau 2D de largeur et longueur égales (valant
-   numprocs) et contenant numprocs * numprocs Local_Result. Ce tableau 2D permettra
-   de stocker les sous-matrices résultat calculées par tous les processeurs lors de la
-   phase de gather. */
-
-void Initialization_Local_Result(Local_Result **local_res, int numprocs);
-/* Alloue dynamiquement un tableau 1D de taille numprocs. Cette Data Structure permet
-   de stocker toutes les sous-matrices résultat propres à chaque processus. */
 ```
+Permet d'allouer dynamiquement un tableau 2D de largeur et longueur égales (valant
+numprocs) et contenant numprocs * numprocs Local_Result. Ce tableau 2D permettra
+de stocker les sous-matrices résultat calculées par tous les processeurs lors de la
+phase de gather.
+```c
+void Initialization_Local_Result(Local_Result **local_res, int numprocs);
+```
+Alloue dynamiquement un tableau 1D de taille numprocs. Cette Data Structure permet
+de stocker toutes les sous-matrices résultat propres à chaque processus.
+
 ### Multiplication min/+ parallèle openMP
 
 Exemple avec le calcul de l'élément en position (i,j) dans la sous-matrice résultat ```res```\
