@@ -165,14 +165,15 @@ void Do_Multiply(
 	Scatter_B_Cols(rank, numprocs, sub_matrices_b, len_submat_b,
 			b, local_b_submatrix, *round);
 	(*round)++;
-	
+	puts("slooow");	
 	Local_Computation_Each_Proc(numprocs, rank,
 		local_a_submatrix, *local_b_submatrix, *local_res, *round);
 	(*round)++; 
-	
+	puts("here ??");
 	Gather_Local_Results(rank, numprocs, local_res_list,
 		   *local_res, *round);
 	(*round)++;
+	puts("wait ?");
 } 
 
 int main(int argc, char *argv[]) {
@@ -824,18 +825,19 @@ void Scatter_A_Lines(
 		Matrix *a, Matrix **local_a_submatrix, int round) {
 	Matrix *ptr_m;
 	*local_a_submatrix = NULL;
+	int i;
 	switch(rank) {
 		case 0:	
 			*sub_matrices_a = Explode_A_Into_Lines(
 					a, numprocs, len_submat_a);
-			for (int i = numprocs - 1; i > 0; i--) {
+			for (i = numprocs - 1; i > 0; i--) {
 				ptr_m = (*sub_matrices_a)[i];
 				My_MPI_Send(ptr_m, (rank + 1) % numprocs, round);
 			}
 			*local_a_submatrix = matrixcpy((*sub_matrices_a)[0]);
 			break;
 		default:
-			for (int i = 0; i < numprocs - rank; i++) {
+			for (i = 0; i < numprocs - rank; i++) {
 				Transmit_SubMatrix(i, numprocs,
 						rank, local_a_submatrix, round);
 			}
