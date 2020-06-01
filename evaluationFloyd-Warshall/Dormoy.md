@@ -130,8 +130,8 @@ lors de la phase de calcul.
 
 ### 5. Phase de Calcul (inclut la circulation)
 
-Une fois le scatter terminé, on peut réaliser la phase de calcul qui consiste à alterner:
-Calcul local -> Circulation -> Calcul local -> Circulation -> ... -> Calcul local -> Circulation
+Une fois le scatter terminé, on peut réaliser la phase de calcul qui consiste à alterner:\
+```Calcul local -> Circulation -> Calcul local -> Circulation -> ... -> Calcul local -> Circulation```
 
 On utilise une structure Local_Result qui contient: 
 - un int correspondant à l'index/position de la sous-matrice résultat dans le processus considéré, ce qui nous sera utile pour la phase de gather pour parcourir dans l'ordre les sous-matrices résultat
