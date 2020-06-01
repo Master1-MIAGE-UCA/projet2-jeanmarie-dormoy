@@ -155,8 +155,10 @@ void Make_Local_A_Submatrices_Circulate(
 		int rank, int numprocs, Matrix **local_a_submatrix, 
 		int round);
 ```
-Le code de cette méthode est assez bref: tous les processus de rang pair envoient leur sous-bloc de A au processus suivant. Ensuite, tous les processus impairs sauvegardent leur sous-bloc de A courant, le remplacent par le sous-bloc de A reçu (celui qui a été envoyé par les processus pairs situés juste avant ceux-ci
-dans l'anneau) et transmettent l'ancien sous-bloc sauvegardé au processus pair qui suit dans l'aneau.
+Le code de cette méthode est assez bref: tous les processus de rang pair envoient leur sous-bloc de A
+au processus suivant. Ensuite, chaque processus impair sauvegarde son sous-bloc de A courant, le remplace
+par le sous-bloc de A reçu (celui qui a été envoyé par le processus pair situé juste avant lui dans
+l'anneau) et transmet l'ancien sous-bloc sauvegardé au processus pair qui suit dans l'aneau.
 
 
 
