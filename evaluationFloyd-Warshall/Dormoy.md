@@ -16,7 +16,7 @@ Cet algorithme nous donne une complexité en O(log2(N)) au lieu de O(N) pour obt
 Lorsqu'on arrive à la fin de chaque tour de boucle, on libère les ressources qui ont été allouées
 lors de la multiplication en anneau effectuée durant ce tour de boucle. Cette partie pourrait être
 optimisée en conservant l'allocation de ces ressources et en modifiant les valeurs contenues
-dans celles-ci à chaque multiplication en anneau (on libère toutes les ressources, et ce uniquement à la fin du programme).\
+dans celles-ci à chaque multiplication en anneau (on libère toutes les ressources, et ce uniquement à la fin du programme).
 
 ```c
 void Do_Multiply(
@@ -30,7 +30,7 @@ void Do_Multiply(
 Cette fonction permet de regrouper toutes les étapes d'une multiplication min/+ de 2 matrices en
 anneau. Elle prend en paramètres toutes les data structures nécessaires au bon déroulement de chacune
 des étapes, en particulier pour le stockage des données dans chacun des processus. Brièvement, elle 
-appelle dans l'ordre:\n
+appelle dans l'ordre:
 
 - Initialization_Local_Result (calloc, cf. §3)
 - Scatter_A_Lines
@@ -41,6 +41,18 @@ appelle dans l'ordre:\n
 Les appels à chacune de ces fonctions (qui utilisent toutes MPI_Send/Recv, hormis la première) se font avec un tag MPI spécifique pour chacune d'entre elles, afin de discriminer les envois et réceptions
 de message MPI entre différents appels de fonction (à l'origine de ces envois de message).
 
+```c
+Fill_Matrix_With_Results(w, local_res_list, numprocs);
+```
+- Après l'exécution de la méthode Do_Multiply (qui a fait un gather), la variable local_res_list dans le 
+main du processus 0 contient toutes les sous-matrices correspondant aux résultats partiels de tous les 
+processeurs. Cette méthode met "proprement" à jour la matrice W avec ces résultats partiels. W mise à jour, on peut continuer la boucle pour calculer W^n.\
+- il n'est pas possible, a priori, d'utiliser openMP pour paralléliser cette méthode: en effet, les 
+données doivent être écrites dans un ordre bien précis dans la variable w, ce qui ne se prête pas au 
+parallélisme. C'est dommage, car cette méthode contient 4 boucles imbriquées (car on fait circuler les 
+blocs de A et pas ceux de B), ce qui ajoute 2s de temps d'exécution supplémentaires pour -np 5 et mat_3 
+en input. Une amélioration possible pour gagner en temps d'exécution est la circulation des blocs de B 
+au lieu de ceux de A: ainsi, l'écriture de Fill_Matrix_With_Results se ferait avec moins de boucles imbriquées.\
 ### 1. Lecture de Fichier
 ```c
 int first_pass(char *s);
