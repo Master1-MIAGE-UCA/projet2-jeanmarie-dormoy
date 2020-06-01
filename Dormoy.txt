@@ -1,6 +1,9 @@
 # SI4 - Spring 2020 - Project 2 Parallelism
 ## Author:	Jean-Marie DORMOY
 
+## NOTES IMPORTANTES: si vous lisez des fichiers dont la ligne fait plus de 500 caractères, modifiez
+la MACRO LINE_SIZE au début du programme Dormoy.c (actuellement fixée à 500).
+
 ### 0. Fonctionnement du main
 
 On lit le fichier et on le stocke dans une matrice input_matx. On met à jour cette matrice pour la transformer
