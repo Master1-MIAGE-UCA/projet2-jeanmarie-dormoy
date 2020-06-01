@@ -11,8 +11,8 @@ srcFolder="src/"
 
 # Change number of processors
 #np = 3
-np =4
-datasets=[2,3,4]
+np =5
+datasets=[i for i in range(2, 6)]
 #for dataset 4, minimum timeout timeout required is 8s
 
 def check_output(resultFile, output) :

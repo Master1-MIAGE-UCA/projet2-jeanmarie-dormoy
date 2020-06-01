@@ -4,10 +4,10 @@ import os
 SAMPLEDIR="data"
 SAMPLENAME="mat_"
 RESULTNAME="result_"
-MAX=7
-MIN=-2 #put less of 0 to increase probability to have inf values
-START=4
-END=6
+MAX=9
+MIN=-1245 #put less of 0 to increase probability to have inf values
+START=10
+END=11
 
 def rint():
     v = random.randint(MIN, MAX)
