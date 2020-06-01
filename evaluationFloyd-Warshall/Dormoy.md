@@ -188,17 +188,17 @@ respectivement (on suppose que numprocs=4).
 
 Début de Gather:\
 ```
-P0			P1		P2		P3
-A		<---B	<---C   <---D	Boucle 1
+P0          P1      P2      P3
+A       <---B   <---C   <---D   Boucle 1
 
-P0			P1		P2		P3
-A,B		<---C	<---D		X	Boucle 2
+P0          P1      P2      P3
+A,B     <---C   <---D       X   Boucle 2
 
-P0			P1		P2		P3
-A,B,C	<---D		X		X	Boucle 3 (on boucle de 1 à numprocs-1 = 3)
+P0          P1      P2      P3
+A,B,C   <---D       X       X   Boucle 3 (on boucle de 1 à numprocs-1 = 3)
 
-P0			P1		P2		P3
-A,B,C,D		X		X		X
+P0          P1      P2      P3
+A,B,C,D     X       X       X
 ```
 /!\ Ici X signifie juste qu'on ne va plus utiliser la liste de Local_Result car on est à la fin d'une
 multiplication en anneau.
