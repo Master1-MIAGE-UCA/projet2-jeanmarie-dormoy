@@ -3,14 +3,14 @@
 
 ### 0. Fonctionnement du main
 
-On lit le fichier et on le stocke dans une matrice ```input_matx```. On met à jour cette\
-matrice pour la transformer en W. On alloue les ressources néccesaires (cf. §3) puis on \
-propage ```log2(W->height)``` à tous les processus. Le but, par exemple pour un input de\
-taille [8x8], est de faire 3 tours de boucle, où on calculera successivement:\
-- ```W² = Do_Multiply(W, W)```\
-- ```W⁴ = Do_Multiply(W², W²)```\
+On lit le fichier et on le stocke dans une matrice ```input_matx```. On met à jour cette 
+matrice pour la transformer en W. On alloue les ressources néccesaires (cf. §3) puis on 
+propage ```log2(W->height)``` à tous les processus. Le but, par exemple pour un input de 
+taille [8x8], est de faire 3 tours de boucle, où on calculera successivement:
+- ```W² = Do_Multiply(W, W)```
+- ```W⁴ = Do_Multiply(W², W²)```
 - ```W^8 = Do_Multiply(W⁴, W⁴)```\
-Cet algorithme nous donne une complexité en O(log2(N)) au lieu de O(N) pour obtenir W^n.\
+Cet algorithme nous donne une complexité en O(log2(N)) au lieu de O(N) pour obtenir W^n.
 
 ### 1. Lecture de Fichier
 ```c
