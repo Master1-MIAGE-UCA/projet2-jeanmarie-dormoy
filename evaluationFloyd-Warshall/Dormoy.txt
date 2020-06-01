@@ -159,8 +159,9 @@ Calcul local -> Circulation -> Calcul local -> Circulation -> ... -> Calcul loca
 
 On utilise une structure Local_Result qui contient: 
 
-- un int correspondant à l'index/position de la sous-matrice résultat dans le processus considéré, ce qui
-nous sera utile pour la phase de gather pour parcourir dans l'ordre les sous-matrices résultat
+- un int correspondant à l'index/position de la sous-matrice résultat dans la liste de Local_Result
+du processus considéré, ce qui nous sera utile pour la phase de gather pour parcourir dans l'ordre
+les sous-matrices résultat
 
 - l'adresse de la sous-matrice résultat
 
