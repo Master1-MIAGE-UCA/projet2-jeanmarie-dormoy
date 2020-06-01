@@ -13,7 +13,6 @@
 #define LINE_SIZE 500
 #define GET(mat, i, j) mat->data[i * mat->width + j]
 #define SET(mat, i, j, val) GET(mat, i, j) = val
-//#define MIN(a,b) ((a) < (b) ? a : b)
 static inline unsigned int MIN(unsigned int a, unsigned int b) {
 	if (a < b)
 		return a;
@@ -97,6 +96,8 @@ void File_Reading(int argc, char *argv[], FILE **fp,
 void Transform_A_Into_W(Matrix *a);
 void Initialization_Local_Result(Local_Result **local_res,
 		int numprocs);
+void Initialization_Local_Result_List(
+		Local_Result ***local_res_list, int numprocs);
 
 /* Scatter								*/
 void fill_submatrix(Matrix *m, Matrix *A, int *offset);
@@ -111,6 +112,17 @@ void Scatter_B_Cols(
 		int rank, int numprocs, Matrix ***sub_matrices_b,
 		int *len_submat_b, Matrix *b, Matrix **local_b_submatrix,
 		int round);
+
+/* Gather								*/
+void Gather_Local_Results(
+		int rank, int numprocs, Local_Result **local_res_list,
+		Local_Result *local_res, int round);
+
+/* Fill Matx with Multiplication result */
+unsigned int* Get_Lineno(Matrix *m, int line);
+void Fill_Matrix_With_Results(Matrix *to_fill, 
+		Local_Result **local_res_list, int numprocs);
+
 
 /* Specific Product with min/+			*/
 Matrix *sequentialMultiply(Matrix *a, Matrix *b);
@@ -135,108 +147,10 @@ void Local_Computation_Each_Proc(
 /* Tests								*/
 int Test_Equals(Matrix *a, Matrix *b);
 
-void Initialization_Local_Result_List(
-		Local_Result ***local_res_list, int numprocs) {
-	Local_Result *temp;
-	*local_res_list = calloc(numprocs, sizeof(Local_Result*));
-	if (!*local_res_list) {
-		fprintf(stderr, "local_res_list: calloc error\n");
-		exit(14);
-	}
-	for (int i = 0; i < numprocs; i++) {
-		temp = calloc(numprocs, sizeof(Local_Result));
-		if (!temp) {
-			fprintf(stderr, 
-					"local_res_list[%d]: calloc error\n", i);
-			exit(15);
-		}
-		temp->mat = NULL;
-		(*local_res_list)[i] = temp;
-	}
+int log2_int(int z) {
+	return floor(log2((double) z));
 }
-void Gather_Local_Results(
-		int rank, int numprocs, Local_Result **local_res_list,
-		Local_Result *local_res, int *round) {
-	Local_Result *temp;
-	int i, j;
-	switch(rank) {
-		case 0:
-			#pragma omp parallel for private(j)
-			for (j = 0; j < numprocs; j++)
-				Fill_Local_Result_With(local_res_list[0] + j,
-						local_res + j);	
-			for (i = 1; i < numprocs; i++) {
-				//#pragma omp parallel for firstprivate(i, _round)
-				//private(j, temp) shared(local_res, local_res_list)
-				for (j = 0; j < numprocs; j++) {
-					MPI_Recv_Local_Result(&temp, 1, *round);
-					Fill_Local_Result_With(
-							local_res_list[i] + temp->index, temp);
-					free(temp);
-				}
-			}
-			break;
-		default:
-			for (i = 0; i < numprocs - 1; i++) {
-				if (rank <= numprocs - 1 -i) {	
-					for (j= 0; j < numprocs; j++) {
-						MPI_Send_Local_Result(local_res + j,
-								rank - 1, *round);
-					}
-				}
-				if (rank < numprocs - 1 -i) {
-					for (j =0; j < numprocs; j++) {
-						MPI_Recv_Local_Result(&temp, rank +1, *round);
-						Fill_Local_Result_With(local_res + j,
-							temp);	
-						free(temp);
-					}	
-				}
-			}
-			break;
-	}
-}
-unsigned int* Get_Lineno(Matrix *m, int line) {
-	if (!m) puts("matrix is nulll!");
-	if (!m->data) puts("m->data is null!");
-	unsigned int* res = calloc(m->width, sizeof(unsigned int));
-	if (!res) {
-		fprintf(stderr, "Get_Lineno: calloc error\n");
-		exit(16);
-	}
-	int col;
-	#pragma omp parallel for
-	for (col = 0; col < m->width; col++)
-		res[col] = GET(m, line, col);
-	return res;
-}
-void Fill_Matrix_With_Results(Matrix *to_fill, 
-		Local_Result **local_res_list, int numprocs) {
-	Local_Result temp;
-	unsigned int *tmp_data;
-	int count = 0, nb_lines;
-	if (local_res_list)
-		for (int index = 0; index < numprocs; index++) {
-			//printf("\nindex=%d", index);
-			nb_lines = local_res_list[0][index].mat->height;
-			//printf("\tnb_lines=%d\n", nb_lines);
-			for (int line = 0; line < nb_lines; line++) {
-				//puts("here 1");
-				//printf("\tline=%d\n", line);
-				for (int col = 0; col < numprocs; col++) {
-					//printf("\tcol=%d\n", col);
-					temp = local_res_list[col][index];
-					tmp_data = Get_Lineno(temp.mat, line);
-					//puts("3>");
-					for (int i = 0; i < temp.mat->width; i++) {
-						to_fill->data[count] = tmp_data[i];
-						count++;
-					}
-					free(tmp_data);
-				}
-			}
-		}
-}
+
 void Do_Multiply(
 		int rank, int numprocs, Matrix *a, Matrix *b,
 		Matrix ***sub_matrices_a, Matrix ***sub_matrices_b,
@@ -260,13 +174,11 @@ void Do_Multiply(
 	//puts("slooow?");
 	
 	Gather_Local_Results(rank, numprocs, local_res_list,
-		   *local_res, round);
+		   *local_res, *round);
 	(*round)++;
 	//puts("slow_bis ?");
 } 
-int log2_int(int z) {
-	return floor(log2((double) z));
-}
+
 int main(int argc, char *argv[]) {
 	int len_submat_a = 0, len_submat_b = 0;
 	Local_Result *local_res = NULL;
@@ -1197,6 +1109,10 @@ void Local_Computation_Each_Proc(
 				rank, numprocs, local_a_submatrix, round);
 	}
 }
+/* .--------------------------------------. 
+ * |    DATA STRUCTURES INITIALIZATION    |
+ * .--------------------------------------.
+ */
 void Initialization_Local_Result(
 		Local_Result **local_res, int numprocs) {
 	*local_res = calloc(numprocs, sizeof(Local_Result));
@@ -1205,6 +1121,116 @@ void Initialization_Local_Result(
 		exit(13);
 	}
 }
+void Initialization_Local_Result_List(
+		Local_Result ***local_res_list, int numprocs) {
+	Local_Result *temp;
+	*local_res_list = calloc(numprocs, sizeof(Local_Result*));
+	if (!*local_res_list) {
+		fprintf(stderr, "local_res_list: calloc error\n");
+		exit(14);
+	}
+	for (int i = 0; i < numprocs; i++) {
+		temp = calloc(numprocs, sizeof(Local_Result));
+		if (!temp) {
+			fprintf(stderr, 
+					"local_res_list[%d]: calloc error\n", i);
+			exit(15);
+		}
+		temp->mat = NULL;
+		(*local_res_list)[i] = temp;
+	}
+}
+
+/* .------------. 
+ * |   GATHER   |
+ * .------------.
+ */
+void Gather_Local_Results(
+		int rank, int numprocs, Local_Result **local_res_list,
+		Local_Result *local_res, int round) {
+	Local_Result *temp;
+	int i, j;
+	switch(rank) {
+		case 0:
+			#pragma omp parallel for private(j)
+			for (j = 0; j < numprocs; j++)
+				Fill_Local_Result_With(local_res_list[0] + j,
+						local_res + j);	
+			for (i = 1; i < numprocs; i++) {
+				for (j = 0; j < numprocs; j++) {
+					MPI_Recv_Local_Result(&temp, 1, round);
+					Fill_Local_Result_With(
+							local_res_list[i] + temp->index, temp);
+					free(temp);
+				}
+			}
+			break;
+		default:
+			for (i = 0; i < numprocs - 1; i++) {
+				if (rank <= numprocs - 1 -i) {	
+					for (j= 0; j < numprocs; j++) {
+						MPI_Send_Local_Result(local_res + j,
+								rank - 1, round);
+					}
+				}
+				if (rank < numprocs - 1 -i) {
+					for (j =0; j < numprocs; j++) {
+						MPI_Recv_Local_Result(&temp, rank +1, round);
+						Fill_Local_Result_With(local_res + j,
+							temp);	
+						free(temp);
+					}	
+				}
+			}
+			break;
+	}
+}
+/* .----------------------------------------------. 
+ * |    FILL MATRIX WITH MULTIPLICATION RESULT    |
+ * .----------------------------------------------.
+ */
+unsigned int* Get_Lineno(Matrix *m, int line) {
+	if (!m) puts("matrix is nulll!");
+	if (!m->data) puts("m->data is null!");
+	unsigned int* res = calloc(m->width, sizeof(unsigned int));
+	if (!res) {
+		fprintf(stderr, "Get_Lineno: calloc error\n");
+		exit(16);
+	}
+	int col;
+	#pragma omp parallel for
+	for (col = 0; col < m->width; col++)
+		res[col] = GET(m, line, col);
+	return res;
+}
+void Fill_Matrix_With_Results(Matrix *to_fill, 
+		Local_Result **local_res_list, int numprocs) {
+	Local_Result temp;
+	unsigned int *tmp_data;
+	int count = 0, nb_lines;
+	if (local_res_list)
+		for (int index = 0; index < numprocs; index++) {
+			//printf("\nindex=%d", index);
+			nb_lines = local_res_list[0][index].mat->height;
+			//printf("\tnb_lines=%d\n", nb_lines);
+			for (int line = 0; line < nb_lines; line++) {
+				//puts("here 1");
+				//printf("\tline=%d\n", line);
+				for (int col = 0; col < numprocs; col++) {
+					//printf("\tcol=%d\n", col);
+					temp = local_res_list[col][index];
+					tmp_data = Get_Lineno(temp.mat, line);
+					//puts("3>");
+					for (int i = 0; i < temp.mat->width; i++) {
+						to_fill->data[count] = tmp_data[i];
+						count++;
+					}
+					free(tmp_data);
+				}
+			}
+		}
+}
+
 /* .-----------. 
  * |   TESTS   |
  * .-----------.
