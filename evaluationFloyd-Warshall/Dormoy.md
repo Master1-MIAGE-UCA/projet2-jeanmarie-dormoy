@@ -53,6 +53,7 @@ parallélisme. C'est dommage, car cette méthode contient 4 boucles imbriquées 
 blocs de A et pas ceux de B), ce qui ajoute 2s de temps d'exécution supplémentaires pour -np 5 et mat_3 
 en input. Une amélioration possible pour gagner en temps d'exécution est la circulation des blocs de B 
 au lieu de ceux de A: ainsi, l'écriture de ```Fill_Matrix_With_Results``` se ferait avec moins de boucles imbriquées (car on devrait fusionner des lignes, pas des colonnes).
+
 ### 1. Lecture de Fichier
 ```c
 int first_pass(char *s);
@@ -64,7 +65,8 @@ cette ligne. On en déduit ensuite les dimensions de la matrice carrée passée 
 Matrix *build_matrix(FILE *fp);
 ```
 Renvoie l'adresse d'une Matrice allouée dynamiquement et remplie avec le contenu du fichier
-correspondant au FILE* fp. 
+correspondant au FILE* fp. À l'intérieur, on utilise fgets (std=c99) pour lire le fichier ligne par ligne
+depuis le début, et on donne la ligne lue à une fonction qui va se charger de la parser afin de remplir les cases correspondantes dans la matrice, tout en mettant à jour une variable d'offset (pour remplir correctement la matrice).
 
 ### 2. Transformation A -> W
 ```c
@@ -88,20 +90,51 @@ void Initialization_Local_Result(Local_Result **local_res, int numprocs);
 Alloue dynamiquement un tableau 1D de taille numprocs. Cette Data Structure permet
 de stocker toutes les sous-matrices résultat propres à chaque processus.
 
+### 4. Phase de Scatter
+
+La première étape consiste à déterminer les dimensions de chaque sous-matrice de A et de B, ce qui se
+fait avec la fonction Compute_Distribution qui renvoie un tableau de dimensions. Cette fonction est utilisée dans les 2 fonctions suivantes:
+```c
+Matrix** Explode_A_Into_Lines(Matrix *A, const int numprocs, int *len);
+```
+```c
+Matrix** Explode_B_Into_Columns(Matrix *B, int numprocs, int *len);
+```
+Elles prennent en argument la matrice A ou B à éclater en sous-matrices, le nombre de processus et un
+pointeur de int: len. Ces fonctions renvoies un tableau de numprocs sous-matrices et mettent à jour 
+l'argument len passé par référence à sa nouvelle valeur numprocs.
+
+Jusque là, le calcul des dimensions et la construction des sous-matrices s'est fait dans le processus 0.
+
+Enfin, voici les fonctions réalisant le scatter:
+```c
+void Scatter_A_Lines(
+		int rank, int numprocs,
+		Matrix ***sub_matrices_a, int *len_submat_a,
+		Matrix *a, Matrix **local_a_submatrix, int round);
+```
+```c
+void Scatter_B_Cols(
+		int rank, int numprocs, Matrix ***sub_matrices_b,
+		int *len_submat_b, Matrix *b, Matrix **local_b_submatrix,
+		int round);
+```
+Elles utilisent les 2 méthodes précédentes générant la liste de sous-matrices de A ou de B. Ensuite, le
+processus p0 envoie l'une derrière l'autre les sous-matrices d'index numprocs -1, numprocs - 2, ..., 1.
+Pour les processus différents de p0, tant que la sous-matrice reçue n'est pas arrivée à son destinataire
+final, elle est retransmise au processus suivant.
+À la fin du procédé, chaque processus possède un bloc de A et un bloc de B. On précise qu'après la phase
+de scatter, un bloc de B ne bougera pas de son processus, tandis qu'un bloc de A sera amené à circuler
+lors de la phase de calcul.
+
+
 ### Multiplication min/+ parallèle openMP
 
 Exemple avec le calcul de l'élément en position (i,j) dans la sous-matrice résultat ```res```
 considérée. On a:
 
-Colonne B:	```2
-			4
-			5
-			0				
-			1		
-			4		
-			3
-			3```\
-Ligne A : ```1 2 3 4 5 6 7 9```\
+Colonne B:	```2 4 5 0 1 4 3 3```\
+Ligne A :	```1 2 3 4 5 6 7 9```\
 On calcule:
 - ```1+2 = 3```	stocké dans temp[0]\
 		   ```2+4 = 6```		        temp[1]\
@@ -118,5 +151,5 @@ Idem: ```temp[0] = min(temp[0], temp[4]) ,etc...```:\
 
 Le procédé terminé, on a seulement à récupérer le résultat de ```min(a1 + b1, ..., a8 + b8)``` en lisant
 la valeur de ```temp[0]```. Ce procédé consiste en ```log(8) = 3``` boucles, parallélisables en openMP. On
-préfère faire 3 boucles plutôt que 8!\
+préfère faire 3 boucles plutôt que 8!
 
