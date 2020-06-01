@@ -76,7 +76,24 @@ Pour Obtenir la matrice W, on modifie la matrice a passée en paramètre "in-pla
 - wij = 0 if i = j
 - wij = weight of  (i,j) if there is an edge between i and j
 - wij = +inf otherwise
-### 3. Allocation des Data Structures
+### 3. Data Structures et Allocations
+```c
+typedef struct Matrix {
+    unsigned int *data;
+    int width;
+    int height;
+    int size;
+} Matrix;
+
+typedef struct Local_Result {
+	int index;
+	Matrix *mat;
+} Local_Result;
+```
+Ces 2 C-Struct possèdent chacune des méthodes pour construire, libérer une Matrix/Local_Result alloués
+dynamiquement ou une liste/matrice de ces objets. Il y a également des fonctions permettant de faire une
+copie de Matrix ou de Local_Result (copie profonde en utilisant calloc) et des fonctions d'affichages
+pour ces deux types d'objets qui ont été utilisés pour le débuggage.
 ```c
 void Initialization_Local_Result_List(Local_Result ***local_res_list, int numprocs);
 ```
@@ -146,8 +163,8 @@ void Local_Computation_Each_Proc(
 		int round);
 ```
 Cette fonction consiste, pour chacun des numprocs Local_Result de  chaque processus, à calculer la 
-sous-matrice résultant de la multiplication du sous-bloc de A et du sous-bloc de B actuellement présents
-dans le processus, et à stocker cette sous-matrice résultat dans le Local_Result courant.
+sous-matrice résultant de la multiplication openMP du sous-bloc de A et du sous-bloc de B actuellement 
+présents dans le processus, et à stocker cette sous-matrice résultat dans le Local_Result courant.
 Pour tous les processus, chaque étape de calcul de sous-matrice résultat est alterné avec un appel à
 la circulation pour faire tourner les sous-blocs de A dans l'anneau.
 ```c
@@ -160,8 +177,34 @@ au processus suivant. Ensuite, chaque processus impair sauvegarde son sous-bloc 
 par le sous-bloc de A reçu (celui qui a été envoyé par le processus pair situé juste avant lui dans
 l'anneau) et transmet l'ancien sous-bloc sauvegardé au processus pair qui suit dans l'aneau.
 
+### 6. Phase de Gather
 
+Un bon exemple illustrant le fonctionnement de mon gather est plus parlant:
 
+On suppose que chaque process possède sa liste de numprocs Local_Result et qu'on se situe juste après
+la fin de la phase de calcul. A, B, C et D représentent la liste Local_Result de P0, P1, P2 et P3, 
+respectivement (on suppose que numprocs=4).
+
+Début de Gather:
+P0			P1		P2		P3
+A		<---B	<---C   <---D	Boucle 1
+
+P0			P1		P2		P3
+A,B		<---C	<---D		X	Boucle 2
+
+P0			P1		P2		P3
+A,B,C	<---D		X		X	Boucle 3 (on boucle de 1 à numprocs-1 = 3)
+
+P0			P1		P2		P3
+A,B,C,D		X		X		X
+
+/!\ Ici X signifie juste qu'on ne va plus utiliser la liste de Local_Result car on est à la fin d'une
+multiplication en anneau.
+
+/!\ X pourrait faire croire qu'on libère la mémoire dans le Gather: ce n'est pas le cas, la mémoire
+occupée par la liste de Local_Result de chaque processus est libérée à la fin d'une multiplication
+en anneau (et réallouée dynamiquement au début de la prochaine multiplication par anneau: c'est un
+point évoqué dans le §0 qui peut être amélioré).
 
 ### Multiplication min/+ parallèle openMP
 
