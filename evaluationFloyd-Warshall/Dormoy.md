@@ -186,7 +186,8 @@ On suppose que chaque process possède sa liste de numprocs Local_Result et qu'o
 la fin de la phase de calcul. A, B, C et D représentent la liste Local_Result de P0, P1, P2 et P3, 
 respectivement (on suppose que numprocs=4).
 
-Début de Gather:
+Début de Gather:\
+```
 P0			P1		P2		P3
 A		<---B	<---C   <---D	Boucle 1
 
@@ -198,7 +199,7 @@ A,B,C	<---D		X		X	Boucle 3 (on boucle de 1 à numprocs-1 = 3)
 
 P0			P1		P2		P3
 A,B,C,D		X		X		X
-
+```
 /!\ Ici X signifie juste qu'on ne va plus utiliser la liste de Local_Result car on est à la fin d'une
 multiplication en anneau.
 
